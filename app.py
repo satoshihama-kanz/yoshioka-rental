@@ -49,7 +49,7 @@ def init_db():
     if c.execute('SELECT COUNT(*) FROM vehicles').fetchone()[0] == 0:
         vf = os.path.join(base, 'data', 'vehicles.json')
         if os.path.exists(vf):
-            for v in json.load(open(vf, encoding='utf-8')):
+            for v in json.load(open(vf, encoding='utf-8-sig')):
                 c.execute('INSERT OR IGNORE INTO vehicles VALUES (?,?,?,?,?,?)',
                     (v['id'], v['number'], v.get('car_type',''), v.get('year',''),
                      v.get('full_number',''), v.get('inspection_date','')))
@@ -58,7 +58,7 @@ def init_db():
     if c.execute('SELECT COUNT(*) FROM events').fetchone()[0] == 0:
         ef = os.path.join(base, 'data', 'events.json')
         if os.path.exists(ef):
-            for e in json.load(open(ef, encoding='utf-8')):
+            for e in json.load(open(ef, encoding='utf-8-sig')):
                 vid = e.get('vehicle_id')
                 if isinstance(vid, list): vid = vid[0]
                 c.execute('''INSERT OR IGNORE INTO events
