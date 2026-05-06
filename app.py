@@ -47,7 +47,10 @@ def init_db():
 
     base = os.path.dirname(__file__)
     if c.execute('SELECT COUNT(*) FROM vehicles').fetchone()[0] == 0:
-        vf = os.path.join(base, 'data', 'vehicles.json')
+        # Diskがdata/を上書きするためJSONはプロジェクトルートに置く
+        vf = os.path.join(base, 'vehicles.json')
+        if not os.path.exists(vf):
+            vf = os.path.join(base, 'data', 'vehicles.json')
         if os.path.exists(vf):
             for v in json.load(open(vf, encoding='utf-8-sig')):
                 c.execute('INSERT OR IGNORE INTO vehicles VALUES (?,?,?,?,?,?)',
@@ -56,7 +59,9 @@ def init_db():
             conn.commit()
 
     if c.execute('SELECT COUNT(*) FROM events').fetchone()[0] == 0:
-        ef = os.path.join(base, 'data', 'events.json')
+        ef = os.path.join(base, 'events.json')
+        if not os.path.exists(ef):
+            ef = os.path.join(base, 'data', 'events.json')
         if os.path.exists(ef):
             for e in json.load(open(ef, encoding='utf-8-sig')):
                 vid = e.get('vehicle_id')
