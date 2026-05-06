@@ -1,0 +1,182 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>吉岡商会 車両管理システム</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<header>
+  <div>
+    <h1>🚗 吉岡商会 車両管理システム</h1>
+    <div class="subtitle" id="lastUpdated"></div>
+  </div>
+  <div class="header-right">
+    <span class="total-badge" id="totalBadge">全 0 台</span>
+    <button class="btn btn-success" onclick="openAddModal()">＋ 状態を登録</button>
+  </div>
+</header>
+
+<div class="tabs">
+  <div class="tab active" onclick="showPage('dashboard')">📊 ダッシュボード</div>
+  <div class="tab" onclick="showPage('calendar')">📅 カレンダー</div>
+  <div class="tab" onclick="showPage('list')">📋 車両一覧</div>
+</div>
+
+<div class="filter-bar">
+  <label>車種</label>
+  <select id="filterType" onchange="applyFilters()">
+    <option value="">すべて</option>
+  </select>
+  <label>状態</label>
+  <select id="filterStatus" onchange="applyFilters()">
+    <option value="">すべて</option>
+    <option value="在庫">在庫（空き）</option>
+    <option value="貸出中">貸出中</option>
+    <option value="予約済">予約済</option>
+    <option value="車検中">車検中</option>
+    <option value="点検中">点検中</option>
+    <option value="修理中">修理中</option>
+  </select>
+  <label>番号/車種検索</label>
+  <input type="text" id="filterSearch" placeholder="番号・車種名…" oninput="applyFilters()" style="width:160px">
+  <button class="btn btn-outline btn-sm" onclick="clearFilters()">クリア</button>
+  <span id="filterCount" style="font-size:12px;color:#888;margin-left:8px;"></span>
+</div>
+
+<!-- ダッシュボード -->
+<div class="content page active" id="page-dashboard">
+  <div class="summary-cards" id="summaryCards"></div>
+  <div class="vehicle-grid" id="vehicleGrid">
+    <div class="loading">読み込み中…</div>
+  </div>
+</div>
+
+<!-- カレンダー -->
+<div class="content page" id="page-calendar">
+  <div style="display:flex;align-items:center;gap:12px;margin-bottom:10px;">
+    <button class="btn btn-outline btn-sm" onclick="calendarOffset -= 14; renderCalendar()">◀ 前へ</button>
+    <span id="calendarRangeLabel" style="font-size:13px;color:#555;"></span>
+    <button class="btn btn-outline btn-sm" onclick="calendarOffset += 14; renderCalendar()">次へ ▶</button>
+    <button class="btn btn-outline btn-sm" onclick="calendarOffset = 0; renderCalendar()">今日</button>
+  </div>
+  <div class="cal-legend">
+    <div class="cal-legend-item"><div class="cal-legend-box" style="background:#E8F5E9"></div>在庫</div>
+    <div class="cal-legend-item"><div class="cal-legend-box" style="background:#BBDEFB"></div>貸出中</div>
+    <div class="cal-legend-item"><div class="cal-legend-box" style="background:#FFE0B2"></div>予約済</div>
+    <div class="cal-legend-item"><div class="cal-legend-box" style="background:#E1BEE7"></div>車検/点検</div>
+    <div class="cal-legend-item"><div class="cal-legend-box" style="background:#FFCDD2"></div>修理中</div>
+    <div class="cal-legend-item"><div class="cal-legend-box" style="background:#F5F5F5"></div>未登録</div>
+  </div>
+  <div class="calendar-container">
+    <div id="calendarView" class="loading">読み込み中…</div>
+  </div>
+</div>
+
+<!-- 車両一覧 -->
+<div class="content page" id="page-list">
+  <div id="vehicleList" class="loading">読み込み中…</div>
+</div>
+
+<!-- 車両詳細パネル -->
+<div class="detail-panel" id="detailPanel">
+  <div class="detail-header">
+    <div>
+      <div style="font-size:22px;font-weight:bold;" id="detailNumber"></div>
+      <div style="font-size:14px;opacity:0.8;" id="detailType"></div>
+    </div>
+    <button class="detail-close" onclick="closeDetail()">✕</button>
+  </div>
+  <div class="detail-body">
+    <div class="detail-section">
+      <h3>車両情報</h3>
+      <div id="detailVehicleInfo" style="font-size:13px;color:#555;line-height:2;"></div>
+    </div>
+    <div class="detail-section">
+      <h3>現在の状態・予定</h3>
+      <div id="detailEvents"></div>
+      <button class="btn btn-primary btn-sm" onclick="openAddModal(currentDetailVehicleId)" style="margin-top:8px;width:100%;">＋ 状態を追加</button>
+    </div>
+  </div>
+</div>
+
+<!-- 状態登録モーダル -->
+<div class="modal-overlay" id="addModal">
+  <div class="modal">
+    <h2 id="modalTitle">車両状態を登録</h2>
+    <div class="form-row">
+      <label>車両番号（4桁）</label>
+      <input type="text" id="formVehicleNumber" placeholder="例: 1234" oninput="onVehicleNumberInput()">
+      <div id="vehicleSuggest" style="font-size:12px;color:#888;margin-top:3px;"></div>
+    </div>
+    <div class="form-row">
+      <label>状態</label>
+      <select id="formStatus" onchange="onStatusChange()">
+        <option value="在庫">在庫（空き）</option>
+        <option value="貸出中">貸出中</option>
+        <option value="予約済">予約済</option>
+        <option value="車検中">車検中</option>
+        <option value="点検中">点検中</option>
+        <option value="修理中">修理中</option>
+      </select>
+    </div>
+    <div class="form-2col" id="dateFields">
+      <div class="form-row">
+        <label>開始日</label>
+        <input type="date" id="formStartDate">
+      </div>
+      <div class="form-row">
+        <label>終了/返却予定日</label>
+        <input type="date" id="formEndDate">
+      </div>
+    </div>
+    <div id="clientFields">
+      <div class="form-row">
+        <label>担当営業</label>
+        <select id="formStaff">
+          <option value="">（選択）</option>
+          <option>平田</option>
+          <option>内田</option>
+          <option>山本圭</option>
+          <option>吉岡</option>
+          <option>則本</option>
+          <option>市川</option>
+          <option>福田</option>
+          <option>奥谷</option>
+        </select>
+      </div>
+      <div class="form-2col">
+        <div class="form-row">
+          <label>取引先/顧客名</label>
+          <input type="text" id="formClient" placeholder="例: ネッツ松井山手店">
+        </div>
+        <div class="form-row">
+          <label>貸出区分</label>
+          <select id="formCategory">
+            <option value="">（選択）</option>
+            <option>損保</option>
+            <option>代車</option>
+            <option>マンスリー</option>
+            <option>通常</option>
+          </select>
+        </div>
+      </div>
+    </div>
+    <div class="form-row" id="repairNoteField">
+      <label>備考（修理内容・特記事項）</label>
+      <textarea id="formNotes" placeholder="例: フロントバンパー傷、フロントガラス水漏れ　など"></textarea>
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-outline" onclick="closeAddModal()">キャンセル</button>
+      <button class="btn btn-success" onclick="saveEvent()">登録する</button>
+    </div>
+  </div>
+</div>
+
+<div id="tooltip" class="tooltip" style="display:none;"></div>
+
+<script src="app.js"></script>
+</body>
+</html>
