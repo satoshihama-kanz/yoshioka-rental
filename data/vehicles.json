@@ -2462,5 +2462,45 @@
         "year":  "",
         "full_number":  "8786",
         "inspection_date":  ""
+    },
+    {
+        "id":  317,
+        "number":  "3094",
+        "car_type":  "ﾙｰｸｽ",
+        "year":  "",
+        "full_number":  "3094",
+        "inspection_date":  ""
+    },
+    {
+        "id":  318,
+        "number":  "3202",
+        "car_type":  "ﾀﾝﾄ",
+        "year":  "",
+        "full_number":  "3202",
+        "inspection_date":  ""
+    },
+    {
+        "id":  319,
+        "number":  "3383",
+        "car_type":  "ﾃﾞｲｽﾞ",
+        "year":  "",
+        "full_number":  "3383",
+        "inspection_date":  ""
+    },
+    {
+        "id":  320,
+        "number":  "7946",
+        "car_type":  "ﾃﾞｲｽﾞ",
+        "year":  "",
+        "full_number":  "7946",
+        "inspection_date":  ""
+    },
+    {
+        "id":  321,
+        "number":  "9072",
+        "car_type":  "ｾﾚﾅe",
+        "year":  "",
+        "full_number":  "9072",
+        "inspection_date":  ""
     }
 ]
