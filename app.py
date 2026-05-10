@@ -1,15 +1,141 @@
-import os, json, sqlite3, hashlib, hmac, re, requests
+import os, json, sqlite3, hashlib, hmac, re, requests, base64
 from datetime import datetime, date, timedelta
-from flask import Flask, request, jsonify, send_from_directory
+from functools import wraps
+from flask import Flask, request, jsonify, send_from_directory, session, redirect, url_for, render_template_string
 
 app = Flask(__name__, static_folder='www')
 
 # ── 設定（環境変数） ────────────────────────────────────────
-LINE_CHANNEL_SECRET  = os.environ.get('LINE_CHANNEL_SECRET', '')
-LINE_CHANNEL_TOKEN   = os.environ.get('LINE_CHANNEL_TOKEN', '')
-LINE_NOTIFY_TOKEN    = os.environ.get('LINE_NOTIFY_TOKEN', '')   # 通知用
+app.secret_key        = os.environ.get('SECRET_KEY', 'yoshioka-fleet-secret-2024')
+ADMIN_USER            = os.environ.get('ADMIN_USER', 'yoshioka')
+ADMIN_PASS            = os.environ.get('ADMIN_PASS', 'rental2024')
+LINE_CHANNEL_SECRET   = os.environ.get('LINE_CHANNEL_SECRET', '')
+LINE_CHANNEL_TOKEN    = os.environ.get('LINE_CHANNEL_TOKEN', '')
+LINE_NOTIFY_TOKEN     = os.environ.get('LINE_NOTIFY_TOKEN', '')
 
 DB = os.path.join(os.path.dirname(__file__), 'data', 'fleet.db')
+
+# ── ログイン画面HTML ────────────────────────────────────────
+LOGIN_HTML = '''<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>吉岡商会 車両管理システム - ログイン</title>
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body {
+  font-family: 'Meiryo', sans-serif;
+  background: linear-gradient(135deg, #1a3a5c 0%, #2196F3 100%);
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.card {
+  background: white;
+  border-radius: 16px;
+  padding: 40px 36px;
+  width: 100%;
+  max-width: 380px;
+  box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+}
+.logo { text-align: center; margin-bottom: 28px; }
+.logo h1 { font-size: 18px; color: #1a3a5c; margin-top: 10px; line-height: 1.5; }
+.logo .car { font-size: 48px; }
+label { display: block; font-size: 13px; color: #666; margin-bottom: 6px; font-weight: bold; }
+input {
+  width: 100%;
+  padding: 12px 14px;
+  border: 2px solid #e0e0e0;
+  border-radius: 8px;
+  font-size: 15px;
+  margin-bottom: 16px;
+  transition: border-color .2s;
+  outline: none;
+}
+input:focus { border-color: #2196F3; }
+button {
+  width: 100%;
+  padding: 14px;
+  background: linear-gradient(135deg, #1a3a5c, #2196F3);
+  color: white;
+  border: none;
+  border-radius: 8px;
+  font-size: 16px;
+  font-weight: bold;
+  cursor: pointer;
+  margin-top: 4px;
+  transition: opacity .2s;
+}
+button:hover { opacity: 0.9; }
+.error {
+  background: #ffebee;
+  color: #c62828;
+  padding: 10px 14px;
+  border-radius: 8px;
+  font-size: 13px;
+  margin-bottom: 16px;
+  text-align: center;
+}
+.note { text-align: center; color: #999; font-size: 12px; margin-top: 20px; }
+</style>
+</head>
+<body>
+<div class="card">
+  <div class="logo">
+    <div class="car">🚗</div>
+    <h1>吉岡商会<br>車両管理システム</h1>
+  </div>
+  {% if error %}
+  <div class="error">⚠️ {{ error }}</div>
+  {% endif %}
+  <form method="post">
+    <label>ユーザー名</label>
+    <input type="text" name="username" placeholder="ユーザー名を入力" autocomplete="username" required>
+    <label>パスワード</label>
+    <input type="password" name="password" placeholder="パスワードを入力" autocomplete="current-password" required>
+    <button type="submit">ログイン</button>
+  </form>
+  <div class="note">吉岡商会 車両管理システム</div>
+</div>
+</body>
+</html>'''
+
+# ── 認証デコレータ ────────────────────────────────────────
+def login_required(f):
+    @wraps(f)
+    def decorated(*args, **kwargs):
+        if not session.get('logged_in'):
+            # APIリクエストの場合は401を返す
+            if request.path.startswith('/api/'):
+                return jsonify({'error': 'Unauthorized'}), 401
+            return redirect('/login')
+        return f(*args, **kwargs)
+    return decorated
+
+# ── ログイン/ログアウト ────────────────────────────────────
+@app.route('/login', methods=['GET', 'POST'])
+def login():
+    if session.get('logged_in'):
+        return redirect('/')
+    error = None
+    if request.method == 'POST':
+        u = request.form.get('username', '')
+        p = request.form.get('password', '')
+        if u == ADMIN_USER and p == ADMIN_PASS:
+            session['logged_in'] = True
+            session['username']  = u
+            session.permanent    = True
+            app.permanent_session_lifetime = timedelta(hours=12)
+            return redirect('/')
+        error = 'ユーザー名またはパスワードが違います'
+    return render_template_string(LOGIN_HTML, error=error)
+
+@app.route('/logout')
+def logout():
+    session.clear()
+    return redirect('/login')
 
 # ── DB ─────────────────────────────────────────────────────
 def get_db():
@@ -47,7 +173,6 @@ def init_db():
 
     base = os.path.dirname(__file__)
     if c.execute('SELECT COUNT(*) FROM vehicles').fetchone()[0] == 0:
-        # Diskがdata/を上書きするためJSONはプロジェクトルートに置く
         vf = os.path.join(base, 'vehicles.json')
         if not os.path.exists(vf):
             vf = os.path.join(base, 'data', 'vehicles.json')
@@ -103,7 +228,6 @@ STATUS_MAP = {
 }
 
 def parse_date(s):
-    """5/6 や 2025/5/6 → YYYY-MM-DD"""
     s = s.strip()
     now = date.today()
     m = re.match(r'^(\d{1,2})[/月](\d{1,2})日?$', s)
@@ -115,17 +239,8 @@ def parse_date(s):
     return None
 
 def process_line_message(text, user_name=''):
-    """
-    受信メッセージを解析して車両ステータスを更新する
-    例）
-      1234?                        → 現在のステータスを返す
-      1234 貸出 田中 ABC商事 5/6〜5/10   → 貸出登録
-      1234 返却                    → 在庫に戻す
-      一覧                         → 本日の貸出中台数を返す
-    """
     text = text.strip()
 
-    # ─ 一覧照会 ─
     if text in ['一覧', '状況', 'status']:
         today = date.today().isoformat()
         conn = get_db()
@@ -147,7 +262,6 @@ def process_line_message(text, user_name=''):
                 f"🔧 整備中: {repairs}台\n"
                 f"🟢 在庫: {total - rentals - reserved - repairs}台")
 
-    # ─ 車番照会 1234? ─
     m = re.match(r'^(\d{3,5})[?？]$', text)
     if m:
         number = m.group(1)
@@ -163,31 +277,22 @@ def process_line_message(text, user_name=''):
                 f"顧客: {ev.get('client','')}\n"
                 f"期間: {ev.get('start_date','')} 〜 {ev.get('end_date','')}")
 
-    # ─ ステータス登録 ─
-    # 書式: 車番 ステータス [担当] [顧客] [開始〜終了]
-    # 例: 1234 貸出 田中 ABC商事 5/6〜5/10
     m = re.match(r'^(\d{3,5})\s+([ぁ-鿿\w]+)(.*)?$', text)
     if m:
         number   = m.group(1)
         stat_key = m.group(2)
         rest     = (m.group(3) or '').strip()
-
         status = STATUS_MAP.get(stat_key)
         if not status:
             return f"❓ 「{stat_key}」は不明なステータスです\n（貸出/返却/予約/車検/点検/修理）"
-
         v = find_vehicle_by_number(number)
         if not v:
             return f"❌ 車番 {number} は見つかりません"
-
-        # 残りのトークンを分解
-        tokens   = rest.split() if rest else []
-        staff    = tokens[0] if len(tokens) > 0 else user_name
-        client   = tokens[1] if len(tokens) > 1 else ''
-        start_d  = date.today().isoformat()
-        end_d    = None
-
-        # 日付範囲 5/6〜5/10 を探す
+        tokens  = rest.split() if rest else []
+        staff   = tokens[0] if len(tokens) > 0 else user_name
+        client  = tokens[1] if len(tokens) > 1 else ''
+        start_d = date.today().isoformat()
+        end_d   = None
         for t in tokens:
             dm = re.search(r'(\S+)[〜~～\-](\S+)', t)
             if dm:
@@ -196,19 +301,15 @@ def process_line_message(text, user_name=''):
                 if sd: start_d = sd
                 if ed: end_d   = ed
                 break
-            # 単独の日付
             sd = parse_date(t)
             if sd and t not in tokens[:2]:
                 start_d = sd
-
-        # DB登録
         conn = get_db()
         conn.execute(
             'INSERT INTO events (vehicle_id,status,start_date,end_date,staff,client,category,notes,created_at) VALUES (?,?,?,?,?,?,?,?,?)',
             (v['id'], status, start_d, end_d, staff, client, 'LINE', f'LINE:{user_name}', datetime.now().strftime('%Y-%m-%d %H:%M:%S')))
         conn.commit()
         conn.close()
-
         period = f"{start_d}" + (f" 〜 {end_d}" if end_d else "〜")
         return (f"✅ 登録しました\n"
                 f"🚗 {number} {v.get('car_type','')}\n"
@@ -216,7 +317,6 @@ def process_line_message(text, user_name=''):
                 f"担当: {staff}　顧客: {client}\n"
                 f"期間: {period}")
 
-    # ─ ヘルプ ─
     return ("📖 使い方\n"
             "• 1234? → 現在の状況確認\n"
             "• 一覧 → 全体の状況確認\n"
@@ -244,8 +344,9 @@ def send_line_notify(message):
         data={'message': message},
         timeout=5)
 
-# ── API ────────────────────────────────────────────────────
+# ── API（要ログイン） ────────────────────────────────────────
 @app.route('/api/vehicles')
+@login_required
 def api_vehicles():
     conn = get_db()
     rows = [dict(r) for r in conn.execute('SELECT * FROM vehicles ORDER BY CAST(number AS INTEGER)').fetchall()]
@@ -253,6 +354,7 @@ def api_vehicles():
     return jsonify(rows)
 
 @app.route('/api/events', methods=['GET'])
+@login_required
 def api_events_get():
     conn = get_db()
     rows = [dict(r) for r in conn.execute('SELECT * FROM events ORDER BY id').fetchall()]
@@ -260,6 +362,7 @@ def api_events_get():
     return jsonify(rows)
 
 @app.route('/api/events', methods=['POST'])
+@login_required
 def api_events_post():
     d = request.get_json()
     now = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
@@ -271,7 +374,6 @@ def api_events_post():
     conn.commit()
     row = dict(conn.execute('SELECT * FROM events WHERE id=?', (cur.lastrowid,)).fetchone())
     conn.close()
-    # LINE Notify
     send_line_notify(
         f"\n[車両管理] イベント登録\n"
         f"車番: {d.get('vehicle_id')}　状態: {d['status']}\n"
@@ -280,6 +382,7 @@ def api_events_post():
     return jsonify(row)
 
 @app.route('/api/events/<int:eid>', methods=['PUT'])
+@login_required
 def api_events_put(eid):
     d = request.get_json()
     conn = get_db()
@@ -293,6 +396,7 @@ def api_events_put(eid):
     return jsonify(dict(row) if row else {})
 
 @app.route('/api/events/<int:eid>', methods=['DELETE'])
+@login_required
 def api_events_delete(eid):
     conn = get_db()
     conn.execute('DELETE FROM events WHERE id=?', (eid,))
@@ -300,18 +404,15 @@ def api_events_delete(eid):
     conn.close()
     return jsonify({'ok': True})
 
-# ── LINE Webhook ───────────────────────────────────────────
+# ── LINE Webhook（認証不要・公開） ─────────────────────────
 @app.route('/webhook/line', methods=['POST'])
 def line_webhook():
-    # 署名検証
     body = request.get_data(as_text=True)
     if LINE_CHANNEL_SECRET:
         sig = request.headers.get('X-Line-Signature', '')
         expected = hmac.new(LINE_CHANNEL_SECRET.encode(), body.encode(), hashlib.sha256).digest()
-        import base64
         if not hmac.compare_digest(sig, base64.b64encode(expected).decode()):
             return 'Invalid signature', 400
-
     data = request.get_json(silent=True) or {}
     for event in data.get('events', []):
         if event.get('type') == 'message' and event['message'].get('type') == 'text':
@@ -322,13 +423,17 @@ def line_webhook():
             send_line_reply(reply_token, reply)
     return 'OK'
 
-# ── 静的ファイル ─────────────────────────────────────────
+# ── 静的ファイル（要ログイン） ──────────────────────────────
 @app.route('/')
+@login_required
 def index():
     return send_from_directory('www', 'index.html')
 
 @app.route('/<path:p>')
+@login_required
 def static_files(p):
+    if p == 'login':
+        return redirect('/login')
     return send_from_directory('www', p)
 
 # ── 起動 ─────────────────────────────────────────────────
