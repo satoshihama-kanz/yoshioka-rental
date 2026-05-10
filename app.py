@@ -127,7 +127,7 @@ def login():
             session['logged_in'] = True
             session['username']  = u
             session.permanent    = True
-            app.permanent_session_lifetime = timedelta(hours=12)
+            app.permanent_session_lifetime = timedelta(days=7)
             return redirect('/')
         error = 'ユーザー名またはパスワードが違います'
     return render_template_string(LOGIN_HTML, error=error)
