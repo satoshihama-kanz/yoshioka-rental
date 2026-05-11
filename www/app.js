@@ -216,7 +216,24 @@ function renderCalendar() {
     });
     html += '</tr></thead><tbody>';
 
-    filteredVehicles.forEach(v => {
+    // 並び替え
+    const sortKey = (document.getElementById('calendarSort') || {value:'number'}).value;
+    const statusOrder = {'貸出中':0,'予約済':1,'車検中':2,'点検中':3,'修理中':4,'在庫':5,'':6};
+    const sortedVehicles = [...filteredVehicles].sort((a, b) => {
+        if (sortKey === 'status') {
+            const sa = getVehicleStatusOnDate(a.id, todayStr).status;
+            const sb = getVehicleStatusOnDate(b.id, todayStr).status;
+            const diff = (statusOrder[sa] ?? 9) - (statusOrder[sb] ?? 9);
+            return diff !== 0 ? diff : a.number.localeCompare(b.number);
+        } else if (sortKey === 'type') {
+            const diff = (a.car_type || '').localeCompare(b.car_type || '');
+            return diff !== 0 ? diff : a.number.localeCompare(b.number);
+        } else {
+            return a.number.localeCompare(b.number);
+        }
+    });
+
+    sortedVehicles.forEach(v => {
         html += `<tr>`;
         html += `<td class="cal-vehicle-col" onclick="openDetail(${v.id})" style="cursor:pointer;">
             <div class="cal-vehicle-num">${v.number}</div>

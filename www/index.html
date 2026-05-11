@@ -56,11 +56,19 @@
 
 <!-- カレンダー -->
 <div class="content page" id="page-calendar">
-  <div style="display:flex;align-items:center;gap:12px;margin-bottom:10px;">
+  <div style="display:flex;align-items:center;gap:12px;margin-bottom:10px;flex-wrap:wrap;">
     <button class="btn btn-outline btn-sm" onclick="calendarOffset -= 14; renderCalendar()">◀ 前へ</button>
     <span id="calendarRangeLabel" style="font-size:13px;color:#555;"></span>
     <button class="btn btn-outline btn-sm" onclick="calendarOffset += 14; renderCalendar()">次へ ▶</button>
     <button class="btn btn-outline btn-sm" onclick="calendarOffset = 0; renderCalendar()">今日</button>
+    <div style="margin-left:auto;display:flex;align-items:center;gap:8px;">
+      <label style="font-size:13px;color:#555;font-weight:bold;">並び替え：</label>
+      <select id="calendarSort" onchange="renderCalendar()" style="font-size:13px;padding:4px 8px;border:1px solid #ccc;border-radius:6px;">
+        <option value="number">🔢 車番順</option>
+        <option value="status">📊 稼働状況別</option>
+        <option value="type">🚗 車種別</option>
+      </select>
+    </div>
   </div>
   <div class="cal-legend">
     <div class="cal-legend-item"><div class="cal-legend-box" style="background:#E8F5E9"></div>在庫</div>
