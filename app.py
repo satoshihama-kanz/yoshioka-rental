@@ -220,15 +220,22 @@ def find_vehicle_by_number(number):
 # ── LINE メッセージ解析・送信 ───────────────────────────────
 STATUS_MAP = {
     '貸出': '貸出中', '貸出中': '貸出中',
+    '配車': '貸出中',                        # 配車完了＝貸出開始
     '予約': '予約済', '予約済': '予約済',
-    '返却': '在庫',  '在庫': '在庫',
+    '返却': '在庫',   '在庫': '在庫',
+    'キャンセル': '在庫', 'キャンセル済': '在庫',
     '車検': '車検中', '車検中': '車検中',
     '点検': '点検中', '点検中': '点検中',
     '修理': '修理中', '修理中': '修理中',
 }
+STAFF_NAMES = ['平田','内田','山本','吉岡','市川','福田','奥谷','川上','田中']
+CATEGORIES  = ['損保','代車','マンスリー','通常']
+
+# 会話状態管理（未完了コマンドの継続）
+CONV_STATE = {}   # source_id → state dict
 
 def parse_date(s):
-    s = s.strip()
+    s = s.strip().rstrip('〜~～')
     now = date.today()
     m = re.match(r'^(\d{1,2})[/月](\d{1,2})日?$', s)
     if m:
@@ -238,9 +245,124 @@ def parse_date(s):
         return date(int(m.group(1)), int(m.group(2)), int(m.group(3))).isoformat()
     return None
 
-def process_line_message(text, user_name=''):
+def extract_mileage(tokens):
+    """5〜6桁の数字を走行距離として抽出"""
+    for t in tokens:
+        if re.match(r'^\d{5,6}$', t):
+            return t
+    return None
+
+def extract_category(tokens):
+    for t in tokens:
+        if t in CATEGORIES:
+            return t
+    return None
+
+def extract_dates(tokens):
+    """日付・期間を抽出。(start_date, end_date) を返す"""
+    start_d = end_d = None
+    for t in tokens:
+        dm = re.search(r'([^\s〜~～]+)[〜~～]([^\s〜~～]*)', t)
+        if dm:
+            sd = parse_date(dm.group(1))
+            ed = parse_date(dm.group(2)) if dm.group(2) else None
+            if sd: start_d = sd
+            if ed: end_d   = ed
+            break
+        sd = parse_date(t)
+        if sd and not start_d:
+            start_d = sd
+    return start_d, end_d
+
+def is_date_token(t):
+    return bool(re.search(r'\d{1,2}[/月]\d{1,2}', t) or '〜' in t or '~' in t or '～' in t)
+
+def register_event(v, status, state):
+    """DBにイベントを登録し、確認メッセージを返す"""
+    today   = date.today().isoformat()
+    start_d = state.get('start_date') or today
+    end_d   = state.get('end_date')
+    staff   = state.get('staff') or ''
+    client  = state.get('client') or ''
+    category= state.get('category') or ''
+    mileage = state.get('mileage') or ''
+    remarks = state.get('notes') or ''
+
+    # notes列に走行距離と備考をまとめて保存
+    notes_parts = []
+    if mileage:
+        notes_parts.append(f"走行距離:{mileage}km")
+    if remarks:
+        notes_parts.append(remarks)
+    notes_str = ' / '.join(notes_parts)
+
+    conn = get_db()
+    conn.execute(
+        'INSERT INTO events (vehicle_id,status,start_date,end_date,staff,client,category,notes,created_at) VALUES (?,?,?,?,?,?,?,?,?)',
+        (v['id'], status, start_d, end_d, staff, client, category, notes_str,
+         datetime.now().strftime('%Y-%m-%d %H:%M:%S')))
+    conn.commit()
+    conn.close()
+
+    period = start_d + (' 〜 ' + end_d if end_d else '〜（返却未定）')
+    msg = (f"✅ 登録しました\n"
+           f"🚗 {v['number']} {v.get('car_type','')}\n"
+           f"状態: {status}\n"
+           f"担当: {staff}　顧客: {client}\n"
+           f"期間: {period}")
+    if category: msg += f"\n区分: {category}"
+    if mileage:  msg += f"\n走行距離: {mileage}km"
+    if remarks:  msg += f"\n備考: {remarks}"
+    return msg
+
+def ask_next(state):
+    """不足情報を1つ聞く"""
+    v   = state['vehicle']
+    hdr = f"🚗 {v['number']} {v.get('car_type','')} [{state['status']}]\n"
+    step = state['missing'][0]
+    if step == 'staff':
+        return hdr + "👤 担当者名を教えてください（例: 田中）\n※「キャンセル」で中止"
+    if step == 'client':
+        return hdr + "🏢 顧客名・取引先を教えてください（例: 滋賀トヨタ今井様）\n※「キャンセル」で中止"
+    if step == 'category':
+        return hdr + "📋 貸出種別を教えてください\n損保 / 代車 / マンスリー / 通常\n※「キャンセル」で中止"
+    return "❓ 情報入力中にエラーが発生しました"
+
+def process_conv_state(text, source_id):
+    """会話継続：不足情報を1つずつ補完"""
+    state  = CONV_STATE[source_id]
+    step   = state['missing'][0]
+
+    if text.strip() in ['キャンセル', 'cancel', 'やめる', 'ヤメル']:
+        del CONV_STATE[source_id]
+        return "❌ 登録をキャンセルしました"
+
+    if step == 'staff':
+        state['staff'] = text.strip()
+    elif step == 'client':
+        state['client'] = text.strip()
+    elif step == 'category':
+        if text.strip() not in CATEGORIES:
+            return f"❓「損保」「代車」「マンスリー」「通常」のどれかを教えてください\n※「キャンセル」で中止"
+        state['category'] = text.strip()
+
+    state['missing'].pop(0)
+
+    if state['missing']:
+        return ask_next(state)
+
+    # 全情報が揃ったので登録
+    del CONV_STATE[source_id]
+    return register_event(state['vehicle'], state['status'], state)
+
+def process_line_message(text, source_id='', user_name=''):
     text = text.strip()
 
+    # ── 会話継続 ──
+    if source_id in CONV_STATE:
+        return process_conv_state(text, source_id)
+
+    # ── 一覧・状況 ──
     if text in ['一覧', '状況', 'status']:
         today = date.today().isoformat()
         conn = get_db()
@@ -262,6 +384,7 @@ def process_line_message(text, user_name=''):
                 f"🔧 整備中: {repairs}台\n"
                 f"🟢 在庫: {total - rentals - reserved - repairs}台")
 
+    # ── 車番? ──
     m = re.match(r'^(\d{3,5})[?？]$', text)
     if m:
         number = m.group(1)
@@ -271,58 +394,111 @@ def process_line_message(text, user_name=''):
         ev = get_vehicle_status(v['id'])
         if not ev:
             return f"🚗 {number} {v.get('car_type','')} → 在庫"
-        return (f"🚗 {number} {v.get('car_type','')}\n"
-                f"状態: {ev['status']}\n"
-                f"担当: {ev.get('staff','')}\n"
-                f"顧客: {ev.get('client','')}\n"
-                f"期間: {ev.get('start_date','')} 〜 {ev.get('end_date','')}")
+        notes = ev.get('notes','')
+        msg = (f"🚗 {number} {v.get('car_type','')}\n"
+               f"状態: {ev['status']}\n"
+               f"担当: {ev.get('staff','')}\n"
+               f"顧客: {ev.get('client','')}\n"
+               f"期間: {ev.get('start_date','')} 〜 {ev.get('end_date','') or '（返却未定）'}")
+        if ev.get('category'): msg += f"\n区分: {ev['category']}"
+        if notes:              msg += f"\n備考: {notes}"
+        return msg
 
-    m = re.match(r'^(\d{3,5})\s+([ぁ-鿿\w]+)(.*)?$', text)
+    # ── メインコマンド：車番＋操作 ──
+    m = re.match(r'^(\d{3,5})\s+(.+)$', text)
     if m:
-        number   = m.group(1)
-        stat_key = m.group(2)
-        rest     = (m.group(3) or '').strip()
-        status = STATUS_MAP.get(stat_key)
-        if not status:
-            return f"❓ 「{stat_key}」は不明なステータスです\n（貸出/返却/予約/車検/点検/修理）"
+        number = m.group(1)
+        rest   = m.group(2).strip()
         v = find_vehicle_by_number(number)
         if not v:
             return f"❌ 車番 {number} は見つかりません"
-        tokens  = rest.split() if rest else []
-        staff   = tokens[0] if len(tokens) > 0 else user_name
-        client  = tokens[1] if len(tokens) > 1 else ''
-        start_d = date.today().isoformat()
-        end_d   = None
-        for t in tokens:
-            dm = re.search(r'(\S+)[〜~～\-](\S+)', t)
-            if dm:
-                sd = parse_date(dm.group(1))
-                ed = parse_date(dm.group(2))
-                if sd: start_d = sd
-                if ed: end_d   = ed
-                break
-            sd = parse_date(t)
-            if sd and t not in tokens[:2]:
-                start_d = sd
-        conn = get_db()
-        conn.execute(
-            'INSERT INTO events (vehicle_id,status,start_date,end_date,staff,client,category,notes,created_at) VALUES (?,?,?,?,?,?,?,?,?)',
-            (v['id'], status, start_d, end_d, staff, client, 'LINE', f'LINE:{user_name}', datetime.now().strftime('%Y-%m-%d %H:%M:%S')))
-        conn.commit()
-        conn.close()
-        period = f"{start_d}" + (f" 〜 {end_d}" if end_d else "〜")
-        return (f"✅ 登録しました\n"
-                f"🚗 {number} {v.get('car_type','')}\n"
-                f"状態: {status}\n"
-                f"担当: {staff}　顧客: {client}\n"
-                f"期間: {period}")
 
+        tokens = rest.split()
+
+        # ステータスキーワードを探す
+        status = None
+        for i, t in enumerate(tokens):
+            if t in STATUS_MAP:
+                status = STATUS_MAP[t]
+                tokens.pop(i)
+                break
+
+        if not status:
+            return (f"❓ 操作が分かりませんでした\n"
+                    f"使い方: {number} [配車/予約/返却/キャンセル/車検/点検/修理] ...\n"
+                    f"例: {number} 配車 田中 滋賀トヨタ 損保 28026")
+
+        # ── 返却・キャンセル（シンプル）──
+        if status == '在庫':
+            mileage = extract_mileage(tokens)
+            notes   = ' '.join(t for t in tokens if t != mileage) if mileage else ' '.join(tokens)
+            state   = dict(vehicle=v, status=status, staff='', client='', category='',
+                           start_date=None, end_date=None, mileage=mileage, notes=notes.strip())
+            return register_event(v, status, state)
+
+        # ── 車検・点検・修理 ──
+        if status in ['車検中', '点検中', '修理中']:
+            mileage         = extract_mileage(tokens)
+            start_d, end_d  = extract_dates(tokens)
+            rest_tokens     = [t for t in tokens
+                               if t != mileage and not is_date_token(t)]
+            notes = ' '.join(rest_tokens).strip()
+            state = dict(vehicle=v, status=status, staff='', client='', category='',
+                         start_date=start_d, end_date=end_d, mileage=mileage, notes=notes)
+            return register_event(v, status, state)
+
+        # ── 貸出中・予約済（担当者・顧客・種別が必要）──
+        mileage         = extract_mileage(tokens)
+        category        = extract_category(tokens)
+        start_d, end_d  = extract_dates(tokens)
+
+        # 走行距離・種別・日付トークンを除いた残りから担当者・顧客・備考を取得
+        leftover = [t for t in tokens
+                    if t != mileage
+                    and t not in CATEGORIES
+                    and not is_date_token(t)]
+
+        staff = None
+        for t in leftover[:]:
+            if t in STAFF_NAMES:
+                staff = t
+                leftover.remove(t)
+                break
+
+        client  = leftover[0] if leftover else None
+        notes   = ' '.join(leftover[1:]).strip() if len(leftover) > 1 else ''
+
+        state = dict(vehicle=v, status=status, staff=staff, client=client,
+                     category=category, start_date=start_d, end_date=end_d,
+                     mileage=mileage, notes=notes, missing=[])
+
+        # 不足情報をチェック
+        missing = []
+        if not staff:    missing.append('staff')
+        if not client:   missing.append('client')
+        if not category: missing.append('category')
+        state['missing'] = missing
+
+        if missing:
+            CONV_STATE[source_id] = state
+            return ask_next(state)
+
+        return register_event(v, status, state)
+
+    # ── ヘルプ ──
     return ("📖 使い方\n"
             "• 1234? → 現在の状況確認\n"
             "• 一覧 → 全体の状況確認\n"
-            "• 1234 貸出 田中 ABC商事 5/6〜5/10\n"
-            "• 1234 返却\n"
-            "• 1234 車検 山田 5/6〜5/20")
+            "─────────────────\n"
+            "• 1234 配車 田中 滋賀トヨタ今井様 損保 28026\n"
+            "• 1234 予約 田中 滋賀トヨタ 損保 5/20〜\n"
+            "• 1234 返却 30015\n"
+            "• 1234 キャンセル\n"
+            "• 1234 修理 フロントバンパー傷\n"
+            "• 1234 車検\n"
+            "─────────────────\n"
+            "※情報が不足の場合は追加で質問します\n"
+            "※走行距離は5〜6桁の数字で入力")
 
 def send_line_reply(reply_token, message):
     if not LINE_CHANNEL_TOKEN:
@@ -418,8 +594,12 @@ def line_webhook():
         if event.get('type') == 'message' and event['message'].get('type') == 'text':
             text        = event['message']['text']
             reply_token = event.get('replyToken', '')
-            user_name   = event.get('source', {}).get('userId', '')[:8]
-            reply = process_line_message(text, user_name)
+            source      = event.get('source', {})
+            user_id     = source.get('userId', '')
+            group_id    = source.get('groupId', '')
+            # グループでも個人でも会話状態を正しく管理できるようにsource_idを設定
+            source_id   = (group_id + '_' + user_id) if group_id else user_id
+            reply = process_line_message(text, source_id, user_id[:8])
             send_line_reply(reply_token, reply)
     return 'OK'
 
