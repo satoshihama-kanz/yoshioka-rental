@@ -351,53 +351,73 @@ def ask_all_missing(state):
 def process_conv_state(text, source_id):
     """会話継続：不足情報をまとめて解析・補完"""
     state   = CONV_STATE[source_id]
-    missing = state['missing']
+    missing = list(state['missing'])
 
     if text.strip() in ['キャンセル', 'cancel', 'やめる', 'ヤメル']:
         del CONV_STATE[source_id]
         return "❌ 登録をキャンセルしました"
 
-    tokens = text.strip().split()
+    # ─── テキスト全体からキーワードを検索（文章形式・スペース形式どちらも対応）───
 
-    # ① カテゴリを先に抽出（明確なキーワード）
-    cat_found    = None
-    non_cat_tokens = []
-    for t in tokens:
-        if t in CATEGORIES:
-            cat_found = t
-        else:
-            non_cat_tokens.append(t)
+    # ① カテゴリ：テキスト全体から検索
+    cat_found = None
+    for cat in CATEGORIES:
+        if cat in text:
+            cat_found = cat
+            break
 
     if 'category' in missing and cat_found:
         state['category'] = cat_found
         missing.remove('category')
     elif 'category' in missing and len(missing) == 1:
-        # カテゴリのみ残っていてキーワード以外が来た場合
-        return f"❓「損保」「代車」「マンスリー」「通常」のどれかを教えてください\n※「キャンセル」で中止"
+        return "❓「損保」「代車」「マンスリー」「通常」のどれかを教えてください\n※「キャンセル」で中止"
 
-    # ② スタッフ名を抽出（リスト照合→なければ先頭トークン）
-    staff_found  = None
-    non_staff_tokens = []
-    for t in non_cat_tokens:
-        if t in STAFF_NAMES and not staff_found:
-            staff_found = t
-        else:
-            non_staff_tokens.append(t)
+    # ② スタッフ名：「担当者は〜」パターン→既知リスト→先頭トークン の順で検索
+    staff_found = None
+
+    # 「担当者は〜」「担当は〜」パターン
+    m = re.search(r'担当[者はは：:\s]*([^\s、,，。　]+)', text)
+    if m:
+        candidate = m.group(1)
+        # カテゴリキーワードでなければ担当者として採用
+        if not any(cat in candidate for cat in CATEGORIES):
+            staff_found = candidate
+
+    # 既知スタッフリストから検索
+    if not staff_found:
+        for s in STAFF_NAMES:
+            if s in text:
+                staff_found = s
+                break
+
+    # 区切り文字で分割してトークン化（スペース・読点・カンマ等）
+    tokens = re.split(r'[\s、,，。・　]+', text.strip())
+    tokens = [t for t in tokens if t]
+
+    # カテゴリを含むトークンを除去
+    non_cat = [t for t in tokens if not any(cat in t for cat in CATEGORIES)]
+
+    # スタッフ名を含むトークンを除去（残りを顧客名候補に）
+    if staff_found:
+        non_staff = [t for t in non_cat
+                     if staff_found not in t
+                     and not re.match(r'担当', t)]
+    else:
+        non_staff = non_cat
 
     if 'staff' in missing:
         if staff_found:
             state['staff'] = staff_found
             missing.remove('staff')
-        elif non_cat_tokens:
-            # リストにない名前でも先頭トークンを担当者として受け付ける
-            state['staff'] = non_cat_tokens[0]
-            non_staff_tokens = non_cat_tokens[1:]
+        elif non_cat:
+            # 先頭トークンを担当者として受け付ける
+            state['staff'] = non_cat[0]
+            non_staff = non_cat[1:]
             missing.remove('staff')
-        # else: 担当者が取れなかった場合はmissingに残したまま
 
     # ③ 顧客名
-    if 'client' in missing and non_staff_tokens:
-        state['client'] = ' '.join(non_staff_tokens)
+    if 'client' in missing and non_staff:
+        state['client'] = ' '.join(non_staff)
         missing.remove('client')
 
     state['missing'] = missing
