@@ -390,7 +390,28 @@ def process_conv_state(text, source_id):
 
     if text.strip() in ['キャンセル', 'cancel', 'やめる', 'ヤメル']:
         del CONV_STATE[source_id]
-        return "❌ 登録をキャンセルしました"
+        return "❌ 操作を中止しました"
+
+    # ── キャンセル番号選択 ──
+    if state.get('step') == 'select_cancel':
+        evs = state['events']
+        try:
+            idx = int(text.strip()) - 1
+            if idx < 0 or idx >= len(evs):
+                raise ValueError
+        except (ValueError, TypeError):
+            return f"❓ 1〜{len(evs)}の番号で入力してください\n「キャンセル」で中止"
+        ev      = evs[idx]
+        t_today = today_jst()
+        conn    = get_db()
+        conn.execute('UPDATE events SET end_date=? WHERE id=?', (t_today, ev['id']))
+        conn.commit(); conn.close()
+        del CONV_STATE[source_id]
+        v      = state['vehicle']
+        period = f"{ev['start_date']}〜{ev.get('end_date') or '（返却未定）'}"
+        msg    = (f"✅ キャンセルしました\n🚗 {v['number']} {v.get('car_type','')}\n"
+                  f"状態: {ev['status']}\n顧客: {ev.get('client','')}\n期間: {period}")
+        return msg
 
     # ─── テキスト全体からキーワードを検索（文章形式・スペース形式どちらも対応）───
 
@@ -527,10 +548,12 @@ def process_line_message(text, source_id='', user_name=''):
         tokens = rest.split()
 
         # ステータスキーワードを探す
-        status = None
+        status   = None
+        stat_key = None
         for i, t in enumerate(tokens):
             if t in STATUS_MAP:
-                status = STATUS_MAP[t]
+                status   = STATUS_MAP[t]
+                stat_key = t
                 tokens.pop(i)
                 break
 
@@ -539,13 +562,67 @@ def process_line_message(text, source_id='', user_name=''):
                     f"使い方: {number} [配車/予約/返却/キャンセル/車検/点検/修理] ...\n"
                     f"例: {number} 配車 田中 滋賀トヨタ 損保 28026")
 
-        # ── 返却・キャンセル（シンプル）──
+        # ── 返却・キャンセル ──
         if status == '在庫':
-            mileage = extract_mileage(tokens)
-            notes   = ' '.join(t for t in tokens if t != mileage) if mileage else ' '.join(tokens)
-            state   = dict(vehicle=v, status=status, staff='', client='', category='',
-                           start_date=None, end_date=None, mileage=mileage, notes=notes.strip())
-            return register_event(v, status, state)
+            mileage  = extract_mileage(tokens)
+            t_today  = today_jst()
+            conn     = get_db()
+
+            if stat_key in ('返却',):
+                # 【返却】今日アクティブな1件だけ閉じる（将来の予約は残す）
+                ev = conn.execute('''
+                    SELECT * FROM events
+                    WHERE vehicle_id=? AND start_date<=?
+                      AND (end_date IS NULL OR end_date>=?)
+                      AND status NOT IN ("在庫")
+                    ORDER BY start_date DESC LIMIT 1
+                ''', (v['id'], t_today, t_today)).fetchone()
+                conn.close()
+                if not ev:
+                    return f"🚗 {v['number']} {v.get('car_type','')} は現在在庫中です"
+                conn2 = get_db()
+                notes_upd = f"走行距離:{mileage}km" if mileage else (ev['notes'] or '')
+                conn2.execute('UPDATE events SET end_date=?, notes=? WHERE id=?',
+                              (t_today, notes_upd, ev['id']))
+                conn2.commit(); conn2.close()
+                msg = (f"✅ 返却しました\n🚗 {v['number']} {v.get('car_type','')}\n"
+                       f"状態: 在庫（返却済）\n顧客: {ev['client'] or ''}")
+                if mileage: msg += f"\n走行距離: {mileage}km"
+                return msg
+
+            else:
+                # 【キャンセル】アクティブ・将来のイベントを取得
+                evs = conn.execute('''
+                    SELECT * FROM events
+                    WHERE vehicle_id=?
+                      AND (end_date IS NULL OR end_date>=?)
+                      AND status NOT IN ("在庫")
+                    ORDER BY start_date ASC
+                ''', (v['id'], t_today)).fetchall()
+                conn.close()
+                if not evs:
+                    return f"🚗 {v['number']} {v.get('car_type','')} は現在在庫中です"
+                if len(evs) == 1:
+                    ev = evs[0]
+                    conn2 = get_db()
+                    conn2.execute('UPDATE events SET end_date=? WHERE id=?', (t_today, ev['id']))
+                    conn2.commit(); conn2.close()
+                    period = f"{ev['start_date']}〜{ev['end_date'] or '（返却未定）'}"
+                    return (f"✅ キャンセルしました\n🚗 {v['number']} {v.get('car_type','')}\n"
+                            f"状態: {ev['status']}\n顧客: {ev['client'] or ''}\n期間: {period}")
+                # 複数件 → 番号選択
+                lines = [f"🚗 {v['number']} {v.get('car_type','')}",
+                         "どの予約をキャンセルしますか？"]
+                for i, ev in enumerate(evs, 1):
+                    period = f"{ev['start_date']}〜{ev['end_date'] or '返却未定'}"
+                    lines.append(f"{i}. {ev['status']} {period} {ev['client'] or ''}")
+                lines.append("\n番号で回答（「キャンセル」で中止）")
+                CONV_STATE[source_id] = {
+                    'step': 'select_cancel', 'vehicle': v,
+                    'events': [dict(e) for e in evs],
+                    'mileage': mileage, 'missing': [],
+                }
+                return '\n'.join(lines)
 
         # ── 車検・点検・修理 ──
         if status in ['車検中', '点検中', '修理中']:
