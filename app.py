@@ -580,6 +580,31 @@ def api_events_delete(eid):
     conn.close()
     return jsonify({'ok': True})
 
+# ── 車両マスタ一括追加（管理者専用） ────────────────────────
+@app.route('/api/admin/add-vehicles', methods=['POST'])
+def admin_add_vehicles():
+    key = request.headers.get('X-Admin-Key', '')
+    if key != ADMIN_PASS:
+        return jsonify({'error': 'Unauthorized'}), 401
+    items = request.get_json() or []
+    conn = get_db()
+    c = conn.cursor()
+    added, skipped = 0, 0
+    for item in items:
+        exists = c.execute('SELECT id FROM vehicles WHERE number=?', (item['number'],)).fetchone()
+        if exists:
+            skipped += 1
+            continue
+        # 新規IDを最大値+1で割り当て
+        max_id = c.execute('SELECT MAX(id) FROM vehicles').fetchone()[0] or 0
+        c.execute('INSERT INTO vehicles (id,number,car_type,year,full_number,inspection_date) VALUES (?,?,?,?,?,?)',
+            (max_id + 1, item['number'], item.get('car_type',''),
+             item.get('year',''), item.get('full_number',''), item.get('inspection_date','')))
+        added += 1
+    conn.commit()
+    conn.close()
+    return jsonify({'added': added, 'skipped': skipped})
+
 # ── 稼働実績一括インポート（管理者専用） ────────────────────
 @app.route('/api/admin/import-status', methods=['POST'])
 def admin_import_status():
