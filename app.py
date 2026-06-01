@@ -168,6 +168,19 @@ def init_db():
             notes TEXT,
             created_at TEXT
         );
+        CREATE TABLE IF NOT EXISTS pending_items (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            message TEXT,
+            source_id TEXT,
+            sender TEXT,
+            created_at TEXT,
+            resolved INTEGER DEFAULT 0,
+            resolved_at TEXT
+        );
+        CREATE TABLE IF NOT EXISTS settings (
+            key TEXT PRIMARY KEY,
+            value TEXT
+        );
     ''')
     conn.commit()
 
@@ -485,20 +498,8 @@ def process_line_message(text, source_id='', user_name=''):
 
         return register_event(v, status, state)
 
-    # ── ヘルプ ──
-    return ("📖 使い方\n"
-            "• 1234? → 現在の状況確認\n"
-            "• 一覧 → 全体の状況確認\n"
-            "─────────────────\n"
-            "• 1234 配車 田中 滋賀トヨタ今井様 損保 28026\n"
-            "• 1234 予約 田中 滋賀トヨタ 損保 5/20〜\n"
-            "• 1234 返却 30015\n"
-            "• 1234 キャンセル\n"
-            "• 1234 修理 フロントバンパー傷\n"
-            "• 1234 車検\n"
-            "─────────────────\n"
-            "※情報が不足の場合は追加で質問します\n"
-            "※走行距離は5〜6桁の数字で入力")
+    # ── 解析不能 → None を返して未対応リストへ ──
+    return None
 
 def send_line_reply(reply_token, message):
     if not LINE_CHANNEL_TOKEN:
@@ -510,6 +511,38 @@ def send_line_reply(reply_token, message):
         json={'replyToken': reply_token,
               'messages': [{'type': 'text', 'text': message}]},
         timeout=5)
+
+def send_line_push(to, message):
+    """LINE グループ・ユーザーへのプッシュ送信"""
+    if not LINE_CHANNEL_TOKEN or not to:
+        return
+    requests.post(
+        'https://api.line.me/v2/bot/message/push',
+        headers={'Authorization': f'Bearer {LINE_CHANNEL_TOKEN}',
+                 'Content-Type': 'application/json'},
+        json={'to': to, 'messages': [{'type': 'text', 'text': message}]},
+        timeout=5)
+
+def store_pending(text, source_id, sender):
+    """未対応メッセージをDBに保存"""
+    conn = get_db()
+    conn.execute(
+        'INSERT INTO pending_items (message, source_id, sender, created_at) VALUES (?,?,?,?)',
+        (text, source_id, sender, datetime.now().strftime('%Y-%m-%d %H:%M:%S')))
+    conn.commit()
+    conn.close()
+
+def get_setting(key):
+    conn = get_db()
+    row = conn.execute('SELECT value FROM settings WHERE key=?', (key,)).fetchone()
+    conn.close()
+    return row[0] if row else None
+
+def save_setting(key, value):
+    conn = get_db()
+    conn.execute('INSERT OR REPLACE INTO settings (key,value) VALUES (?,?)', (key, value))
+    conn.commit()
+    conn.close()
 
 def send_line_notify(message):
     if not LINE_NOTIFY_TOKEN:
@@ -580,6 +613,51 @@ def api_events_delete(eid):
     conn.close()
     return jsonify({'ok': True})
 
+# ── 未処理メッセージ管理 ────────────────────────────────────
+@app.route('/api/pending', methods=['GET'])
+@login_required
+def api_pending_get():
+    conn = get_db()
+    rows = [dict(r) for r in conn.execute(
+        "SELECT * FROM pending_items WHERE resolved=0 ORDER BY created_at DESC"
+    ).fetchall()]
+    conn.close()
+    return jsonify(rows)
+
+@app.route('/api/pending/<int:pid>/resolve', methods=['POST'])
+@login_required
+def api_pending_resolve(pid):
+    conn = get_db()
+    conn.execute("UPDATE pending_items SET resolved=1, resolved_at=? WHERE id=?",
+                 (datetime.now().strftime('%Y-%m-%d %H:%M:%S'), pid))
+    conn.commit()
+    conn.close()
+    return jsonify({'ok': True})
+
+@app.route('/api/pending/remind', methods=['GET', 'POST'])
+def api_pending_remind():
+    key = request.headers.get('X-Admin-Key','') or request.args.get('key','')
+    if key != ADMIN_PASS:
+        return jsonify({'error': 'Unauthorized'}), 401
+    conn = get_db()
+    items = conn.execute(
+        "SELECT * FROM pending_items WHERE resolved=0 ORDER BY created_at ASC"
+    ).fetchall()
+    conn.close()
+    if not items:
+        return jsonify({'sent': False, 'reason': '未処理なし'})
+    group_id = get_setting('line_group_id')
+    if not group_id:
+        return jsonify({'sent': False, 'reason': 'グループID未設定'})
+    lines = [f"⚠️ 未対応メッセージ {len(items)}件\n{'─'*18}"]
+    for i, item in enumerate(items, 1):
+        dt = (item['created_at'] or '')[:16]
+        msg = (item['message'] or '')[:60]
+        lines.append(f"{i}. [{dt}]\n{msg}")
+    lines.append(f"{'─'*18}\n📋 Webシステムで処理済みにしてください\nhttps://yoshioka-rental-1.onrender.com")
+    send_line_push(group_id, '\n'.join(lines))
+    return jsonify({'sent': True, 'count': len(items)})
+
 # ── 車両マスタ一括追加（管理者専用） ────────────────────────
 @app.route('/api/admin/add-vehicles', methods=['POST'])
 def admin_add_vehicles():
@@ -646,15 +724,21 @@ def line_webhook():
             return 'Invalid signature', 400
     data = request.get_json(silent=True) or {}
     for event in data.get('events', []):
+        source   = event.get('source', {})
+        user_id  = source.get('userId', '')
+        group_id = source.get('groupId', '')
+        # グループIDを自動保存（初回受信時）
+        if group_id and not get_setting('line_group_id'):
+            save_setting('line_group_id', group_id)
         if event.get('type') == 'message' and event['message'].get('type') == 'text':
             text        = event['message']['text']
             reply_token = event.get('replyToken', '')
-            source      = event.get('source', {})
-            user_id     = source.get('userId', '')
-            group_id    = source.get('groupId', '')
-            # グループでも個人でも会話状態を正しく管理できるようにsource_idを設定
             source_id   = (group_id + '_' + user_id) if group_id else user_id
             reply = process_line_message(text, source_id, user_id[:8])
+            if reply is None:
+                # 未対応 → DBに保存して短い返信
+                store_pending(text, source_id, user_id[:8])
+                reply = '⚠️ 未対応メッセージへ追加しました'
             send_line_reply(reply_token, reply)
     return 'OK'
 

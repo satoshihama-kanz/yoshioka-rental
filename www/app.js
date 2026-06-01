@@ -28,7 +28,9 @@ async function init() {
     document.getElementById('lastUpdated').textContent = `最終更新: ${new Date().toLocaleString('ja-JP')}`;
 
     applyFilters();
+    refreshPendingBadge();
     setInterval(refreshEvents, 30000);
+    setInterval(refreshPendingBadge, 60000);
 }
 
 async function refreshEvents() {
@@ -43,6 +45,7 @@ function renderCurrentPage() {
     if (id === 'page-dashboard') renderDashboard();
     else if (id === 'page-calendar') renderCalendar();
     else if (id === 'page-list') renderList();
+    else if (id === 'page-pending') renderPending();
     if (currentDetailVehicleId) renderDetail(currentDetailVehicleId);
 }
 
@@ -136,7 +139,7 @@ function showPage(name) {
     document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
     document.getElementById('page-' + name).classList.add('active');
     const tabs = document.querySelectorAll('.tab');
-    const idx = { dashboard: 0, calendar: 1, list: 2 }[name];
+    const idx = { dashboard: 0, calendar: 1, list: 2, pending: 3 }[name];
     tabs[idx].classList.add('active');
     renderCurrentPage();
 }
@@ -284,6 +287,69 @@ function renderCalendar() {
 
     document.getElementById('calendarView').innerHTML = html;
     document.getElementById('calendarView').className = 'calendar-container';
+}
+
+// ====== 未処理メッセージ ======
+async function renderPending() {
+    const el = document.getElementById('pendingList');
+    el.innerHTML = '<div class="loading">読み込み中…</div>';
+    try {
+        const res = await fetch('/api/pending');
+        const items = await res.json();
+        updatePendingBadge(items.length);
+        if (items.length === 0) {
+            el.innerHTML = '<div style="text-align:center;padding:40px;color:#888;">✅ 未処理メッセージはありません</div>';
+            return;
+        }
+        el.innerHTML = items.map(item => {
+            const dt = (item.created_at || '').slice(0, 16);
+            const msg = (item.message || '').replace(/</g,'&lt;').replace(/\n/g,'<br>');
+            return `<div style="background:white;border-radius:8px;padding:14px 16px;margin-bottom:8px;box-shadow:0 1px 4px rgba(0,0,0,0.1);border-left:4px solid #FF9800;">
+                <div style="font-size:11px;color:#888;margin-bottom:6px;">📅 ${dt}</div>
+                <div style="font-size:13px;line-height:1.7;margin-bottom:10px;white-space:pre-wrap;">${msg}</div>
+                <button class="btn btn-success btn-sm" onclick="resolvePending(${item.id}, this)">✅ 処理済みにする</button>
+            </div>`;
+        }).join('');
+    } catch(e) {
+        el.innerHTML = '<div style="color:red;">読み込みエラー</div>';
+    }
+}
+
+async function resolvePending(id, btn) {
+    btn.disabled = true;
+    btn.textContent = '処理中…';
+    try {
+        await fetch(`/api/pending/${id}/resolve`, {method:'POST'});
+        btn.closest('div[style]').style.opacity = '0.4';
+        btn.textContent = '✅ 処理済み';
+        // バッジ更新
+        const res = await fetch('/api/pending');
+        const items = await res.json();
+        updatePendingBadge(items.length);
+        setTimeout(() => renderPending(), 800);
+    } catch(e) {
+        btn.textContent = 'エラー';
+    }
+}
+
+function updatePendingBadge(count) {
+    const badge = document.getElementById('pendingBadge');
+    if (!badge) return;
+    if (count > 0) {
+        badge.textContent = count;
+        badge.style.display = 'inline';
+    } else {
+        badge.style.display = 'none';
+    }
+}
+
+// ページ読み込み時にバッジを更新
+async function refreshPendingBadge() {
+    try {
+        const res = await fetch('/api/pending');
+        const items = await res.json();
+        updatePendingBadge(items.length);
+    } catch(e) {}
 }
 
 // ====== リスト ======
