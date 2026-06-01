@@ -387,11 +387,13 @@ def process_conv_state(text, source_id):
     if 'staff' in missing:
         if staff_found:
             state['staff'] = staff_found
+            missing.remove('staff')
         elif non_cat_tokens:
             # リストにない名前でも先頭トークンを担当者として受け付ける
             state['staff'] = non_cat_tokens[0]
             non_staff_tokens = non_cat_tokens[1:]
-        missing.remove('staff') if 'staff' in missing else None
+            missing.remove('staff')
+        # else: 担当者が取れなかった場合はmissingに残したまま
 
     # ③ 顧客名
     if 'client' in missing and non_staff_tokens:
