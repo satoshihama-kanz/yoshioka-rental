@@ -366,59 +366,61 @@ def process_conv_state(text, source_id):
             cat_found = cat
             break
 
-    if 'category' in missing and cat_found:
-        state['category'] = cat_found
-        missing.remove('category')
-    elif 'category' in missing and len(missing) == 1:
-        return "❓「損保」「代車」「マンスリー」「通常」のどれかを教えてください\n※「キャンセル」で中止"
-
-    # ② スタッフ名：「担当者は〜」パターン→既知リスト→先頭トークン の順で検索
+    # ② スタッフ名：「担当者は〜」パターン → 既知リスト の順で検索
     staff_found = None
-
-    # 「担当者は〜」「担当は〜」パターン
-    m = re.search(r'担当[者はは：:\s]*([^\s、,，。　]+)', text)
-    if m:
-        candidate = m.group(1)
-        # カテゴリキーワードでなければ担当者として採用
+    m_staff = re.search(r'担当[者はは：:\s]*([^\s、,，。　]+)', text)
+    if m_staff:
+        candidate = m_staff.group(1)
         if not any(cat in candidate for cat in CATEGORIES):
             staff_found = candidate
-
-    # 既知スタッフリストから検索
     if not staff_found:
         for s in STAFF_NAMES:
             if s in text:
                 staff_found = s
                 break
 
-    # 区切り文字で分割してトークン化（スペース・読点・カンマ等）
-    tokens = re.split(r'[\s、,，。・　]+', text.strip())
-    tokens = [t for t in tokens if t]
+    # ③ 顧客名：「顧客名は〜」「顧客は〜」「取引先は〜」パターンで検索
+    client_found = None
+    m_client = re.search(r'(?:顧客名?|取引先)[はは：:\s]*([^\s、,，。　]+)', text)
+    if m_client:
+        candidate = m_client.group(1)
+        if not any(cat in candidate for cat in CATEGORIES):
+            client_found = candidate
 
-    # カテゴリを含むトークンを除去
-    non_cat = [t for t in tokens if not any(cat in t for cat in CATEGORIES)]
+    # ─── 取得できた情報をstateに反映 ───
+    if 'category' in missing and cat_found:
+        state['category'] = cat_found
+        missing.remove('category')
+    elif 'category' in missing and len(missing) == 1:
+        return "❓「損保」「代車」「マンスリー」「通常」のどれかを教えてください\n※「キャンセル」で中止"
 
-    # スタッフ名を含むトークンを除去（残りを顧客名候補に）
-    if staff_found:
-        non_staff = [t for t in non_cat
-                     if staff_found not in t
-                     and not re.match(r'担当', t)]
-    else:
-        non_staff = non_cat
+    if 'staff' in missing and staff_found:
+        state['staff'] = staff_found
+        missing.remove('staff')
 
-    if 'staff' in missing:
-        if staff_found:
-            state['staff'] = staff_found
-            missing.remove('staff')
-        elif non_cat:
-            # 先頭トークンを担当者として受け付ける
-            state['staff'] = non_cat[0]
-            non_staff = non_cat[1:]
-            missing.remove('staff')
-
-    # ③ 顧客名
-    if 'client' in missing and non_staff:
-        state['client'] = ' '.join(non_staff)
+    if 'client' in missing and client_found:
+        state['client'] = client_found
         missing.remove('client')
+
+    # ─── パターン未検出の残りはトークンから推測 ───
+    if any(f in missing for f in ['staff', 'client']):
+        tokens = re.split(r'[\s、,，。・　]+', text.strip())
+        tokens = [t for t in tokens if t]
+        # カテゴリ・担当者・顧客パターンのトーククンを除去
+        remaining = [t for t in tokens
+                     if not any(cat in t for cat in CATEGORIES)
+                     and not re.match(r'担当|顧客|取引先', t)
+                     and t != staff_found
+                     and t != client_found]
+
+        if 'staff' in missing and remaining:
+            state['staff'] = remaining[0]
+            remaining = remaining[1:]
+            missing.remove('staff')
+
+        if 'client' in missing and remaining:
+            state['client'] = ' '.join(remaining)
+            missing.remove('client')
 
     state['missing'] = missing
 
