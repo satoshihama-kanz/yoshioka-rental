@@ -328,41 +328,80 @@ def register_event(v, status, state):
     if remarks:  msg += f"\n備考: {remarks}"
     return msg
 
-def ask_next(state):
-    """不足情報を1つ聞く"""
-    v   = state['vehicle']
-    hdr = f"🚗 {v['number']} {v.get('car_type','')} [{state['status']}]\n"
-    step = state['missing'][0]
-    if step == 'staff':
-        return hdr + "👤 担当者名を教えてください（例: 田中）\n※「キャンセル」で中止"
-    if step == 'client':
-        return hdr + "🏢 顧客名・取引先を教えてください（例: 滋賀トヨタ今井様）\n※「キャンセル」で中止"
-    if step == 'category':
-        return hdr + "📋 貸出種別を教えてください\n損保 / 代車 / マンスリー / 通常\n※「キャンセル」で中止"
-    return "❓ 情報入力中にエラーが発生しました"
+def ask_all_missing(state):
+    """不足情報をまとめて一度に聞く"""
+    v       = state['vehicle']
+    missing = state['missing']
+    hdr     = f"🚗 {v['number']} {v.get('car_type','')} [{state['status']}]\n"
+    lines   = [hdr + "以下をまとめて教えてください👇"]
+    examples = []
+    if 'staff' in missing:
+        lines.append("👤 担当者名")
+        examples.append("田中")
+    if 'client' in missing:
+        lines.append("🏢 顧客名")
+        examples.append("滋賀トヨタ")
+    if 'category' in missing:
+        lines.append("📋 種別（損保/代車/マンスリー/通常）")
+        examples.append("損保")
+    lines.append(f"\n例:「{' '.join(examples)}」")
+    lines.append("※「キャンセル」で中止")
+    return '\n'.join(lines)
 
 def process_conv_state(text, source_id):
-    """会話継続：不足情報を1つずつ補完"""
-    state  = CONV_STATE[source_id]
-    step   = state['missing'][0]
+    """会話継続：不足情報をまとめて解析・補完"""
+    state   = CONV_STATE[source_id]
+    missing = state['missing']
 
     if text.strip() in ['キャンセル', 'cancel', 'やめる', 'ヤメル']:
         del CONV_STATE[source_id]
         return "❌ 登録をキャンセルしました"
 
-    if step == 'staff':
-        state['staff'] = text.strip()
-    elif step == 'client':
-        state['client'] = text.strip()
-    elif step == 'category':
-        if text.strip() not in CATEGORIES:
-            return f"❓「損保」「代車」「マンスリー」「通常」のどれかを教えてください\n※「キャンセル」で中止"
-        state['category'] = text.strip()
+    tokens = text.strip().split()
 
-    state['missing'].pop(0)
+    # ① カテゴリを先に抽出（明確なキーワード）
+    cat_found    = None
+    non_cat_tokens = []
+    for t in tokens:
+        if t in CATEGORIES:
+            cat_found = t
+        else:
+            non_cat_tokens.append(t)
 
-    if state['missing']:
-        return ask_next(state)
+    if 'category' in missing and cat_found:
+        state['category'] = cat_found
+        missing.remove('category')
+    elif 'category' in missing and len(missing) == 1:
+        # カテゴリのみ残っていてキーワード以外が来た場合
+        return f"❓「損保」「代車」「マンスリー」「通常」のどれかを教えてください\n※「キャンセル」で中止"
+
+    # ② スタッフ名を抽出（リスト照合→なければ先頭トークン）
+    staff_found  = None
+    non_staff_tokens = []
+    for t in non_cat_tokens:
+        if t in STAFF_NAMES and not staff_found:
+            staff_found = t
+        else:
+            non_staff_tokens.append(t)
+
+    if 'staff' in missing:
+        if staff_found:
+            state['staff'] = staff_found
+        elif non_cat_tokens:
+            # リストにない名前でも先頭トークンを担当者として受け付ける
+            state['staff'] = non_cat_tokens[0]
+            non_staff_tokens = non_cat_tokens[1:]
+        missing.remove('staff') if 'staff' in missing else None
+
+    # ③ 顧客名
+    if 'client' in missing and non_staff_tokens:
+        state['client'] = ' '.join(non_staff_tokens)
+        missing.remove('client')
+
+    state['missing'] = missing
+
+    if missing:
+        return ask_all_missing(state)
 
     # 全情報が揃ったので登録
     del CONV_STATE[source_id]
@@ -494,7 +533,7 @@ def process_line_message(text, source_id='', user_name=''):
 
         if missing:
             CONV_STATE[source_id] = state
-            return ask_next(state)
+            return ask_all_missing(state)
 
         return register_event(v, status, state)
 
