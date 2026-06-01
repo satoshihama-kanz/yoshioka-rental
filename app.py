@@ -580,6 +580,36 @@ def api_events_delete(eid):
     conn.close()
     return jsonify({'ok': True})
 
+# ── 稼働実績一括インポート（管理者専用） ────────────────────
+@app.route('/api/admin/import-status', methods=['POST'])
+def admin_import_status():
+    key = request.headers.get('X-Admin-Key', '')
+    if key != ADMIN_PASS:
+        return jsonify({'error': 'Unauthorized'}), 401
+    items = request.get_json() or []
+    conn = get_db()
+    c = conn.cursor()
+    c.execute('DELETE FROM events')
+    inserted, not_found = 0, []
+    today = '2026-05-27'
+    for item in items:
+        v = c.execute('SELECT id FROM vehicles WHERE number=?', (item['number'],)).fetchone()
+        if not v:
+            not_found.append(item['number'])
+            continue
+        c.execute('''INSERT INTO events
+            (vehicle_id,status,start_date,end_date,staff,client,category,notes,created_at)
+            VALUES (?,?,?,?,?,?,?,?,?)''',
+            (v[0], item['status'], today, None,
+             item.get('staff',''), '', 'Excel取込',
+             item.get('notes',''),
+             datetime.now().strftime('%Y-%m-%d %H:%M:%S')))
+        inserted += 1
+    conn.commit()
+    conn.close()
+    return jsonify({'inserted': inserted, 'not_found_count': len(not_found),
+                    'not_found': not_found[:20]})
+
 # ── LINE Webhook（認証不要・公開） ─────────────────────────
 @app.route('/webhook/line', methods=['POST'])
 def line_webhook():
