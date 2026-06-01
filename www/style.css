@@ -90,13 +90,19 @@ header .subtitle { font-size: 12px; opacity: 0.8; margin-top: 2px; }
 .vc-next-label { background: #FF9800; color: white; border-radius: 3px; padding: 0 4px; font-size: 10px; }
 
 /* カレンダービュー */
-.calendar-container { overflow-x: auto; }
+.calendar-container { overflow: auto; max-height: calc(100vh - 220px); }
 .calendar-table { border-collapse: collapse; font-size: 12px; min-width: 100%; }
 .calendar-table th, .calendar-table td { border: 1px solid #e0e0e0; padding: 0; }
-.cal-vehicle-col { min-width: 130px; max-width: 130px; padding: 6px 8px; background: #f8f9fa; position: sticky; left: 0; z-index: 1; }
-.cal-vehicle-num { font-weight: bold; font-size: 14px; color: #1a3a5c; }
-.cal-vehicle-type { font-size: 11px; color: #777; }
-.cal-date-header { text-align: center; min-width: 36px; padding: 4px 2px; background: #1a3a5c; color: white; white-space: nowrap; }
+
+/* 左列固定（車両名） */
+.cal-vehicle-col { min-width: 130px; max-width: 130px; padding: 6px 8px; background: #f8f9fa; position: sticky; left: 0; z-index: 2; }
+
+/* 上行固定（日付ヘッダー） */
+.cal-date-header { text-align: center; min-width: 36px; padding: 4px 2px; background: #1a3a5c; color: white; white-space: nowrap; position: sticky; top: 0; z-index: 2; }
+
+/* 左上角のセル（車両ヘッダー）は両方固定 */
+thead .cal-vehicle-col { position: sticky; left: 0; top: 0; z-index: 3; background: #e8ecf0; }
+
 .cal-date-header.today { background: #FF5722; }
 .cal-date-header.sunday { background: #7B1FA2; }
 .cal-date-header.saturday { background: #1565C0; }

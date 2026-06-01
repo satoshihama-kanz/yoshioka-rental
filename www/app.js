@@ -106,6 +106,30 @@ function clearFilters() {
     applyFilters();
 }
 
+// ダッシュボードカードクリック→状態フィルター
+function filterByStatus(status) {
+    // 在庫は特殊処理（イベントなし車両）
+    if (status === '') {
+        // 全表示に戻す
+        document.getElementById('filterStatus').value = '';
+        applyFilters();
+        renderDashboard();
+        return;
+    }
+    document.getElementById('filterStatus').value = status;
+    applyFilters();
+    renderDashboard();
+    // 車検中クリック時は点検中も含めて表示
+    if (status === '車検中') {
+        const todayStr = today();
+        filteredVehicles = vehicles.filter(v => {
+            const { status: s } = getVehicleCurrentStatus(v.id);
+            return s === '車検中' || s === '点検中';
+        });
+        renderDashboard();
+    }
+}
+
 // タブ切り替え
 function showPage(name) {
     document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
@@ -128,11 +152,16 @@ function renderDashboard() {
 
     const cards = document.getElementById('summaryCards');
     cards.innerHTML = `
-        <div class="card available"><div class="card-num">${statusCounts['在庫']}</div><div class="card-label">在庫（空き）</div></div>
-        <div class="card rented"><div class="card-num">${statusCounts['貸出中']}</div><div class="card-label">貸出中</div></div>
-        <div class="card reserved"><div class="card-num">${statusCounts['予約済']}</div><div class="card-label">予約済</div></div>
-        <div class="card inspection"><div class="card-num">${statusCounts['車検中'] + statusCounts['点検中']}</div><div class="card-label">車検・点検中</div></div>
-        <div class="card repair"><div class="card-num">${statusCounts['修理中']}</div><div class="card-label">修理中</div></div>
+        <div class="card available" style="cursor:pointer" onclick="filterByStatus('')" title="クリックで全表示">
+          <div class="card-num">${statusCounts['在庫']}</div><div class="card-label">在庫（空き）</div></div>
+        <div class="card rented" style="cursor:pointer" onclick="filterByStatus('貸出中')" title="クリックで貸出中を表示">
+          <div class="card-num">${statusCounts['貸出中']}</div><div class="card-label">貸出中</div></div>
+        <div class="card reserved" style="cursor:pointer" onclick="filterByStatus('予約済')" title="クリックで予約済を表示">
+          <div class="card-num">${statusCounts['予約済']}</div><div class="card-label">予約済</div></div>
+        <div class="card inspection" style="cursor:pointer" onclick="filterByStatus('車検中')" title="クリックで車検・点検中を表示">
+          <div class="card-num">${statusCounts['車検中'] + statusCounts['点検中']}</div><div class="card-label">車検・点検中</div></div>
+        <div class="card repair" style="cursor:pointer" onclick="filterByStatus('修理中')" title="クリックで修理中を表示">
+          <div class="card-num">${statusCounts['修理中']}</div><div class="card-label">修理中</div></div>
     `;
 
     const grid = document.getElementById('vehicleGrid');
