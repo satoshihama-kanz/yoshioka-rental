@@ -272,16 +272,31 @@ def extract_category(tokens):
     return None
 
 def extract_dates(tokens):
-    """日付・期間を抽出。(start_date, end_date) を返す"""
+    """日付・期間を抽出。〜/から/〜/- いずれも対応"""
     start_d = end_d = None
+    # トークンを結合して全体から検索（スペースで分かれているケースも対応）
+    full = ' '.join(tokens)
+
+    # 日付範囲パターン（7月1日から7月15日 / 7/1〜7/15 / 7月1日〜15日 等）
+    dm = re.search(
+        r'(\d{1,2}[月/]\d{1,2}日?)\s*[〜~～から\-～]+\s*(\d{1,2}[月/]\d{1,2}日?)',
+        full)
+    if dm:
+        sd = parse_date(dm.group(1))
+        ed = parse_date(dm.group(2))
+        if sd: start_d = sd
+        if ed: end_d   = ed
+        return start_d, end_d
+
+    # 単独の開始日（〜付き）
+    dm2 = re.search(r'(\d{1,2}[月/]\d{1,2}日?)\s*[〜~～から]+', full)
+    if dm2:
+        sd = parse_date(dm2.group(1))
+        if sd: start_d = sd
+        return start_d, end_d
+
+    # 単独の日付
     for t in tokens:
-        dm = re.search(r'([^\s〜~～]+)[〜~～]([^\s〜~～]*)', t)
-        if dm:
-            sd = parse_date(dm.group(1))
-            ed = parse_date(dm.group(2)) if dm.group(2) else None
-            if sd: start_d = sd
-            if ed: end_d   = ed
-            break
         sd = parse_date(t)
         if sd and not start_d:
             start_d = sd
