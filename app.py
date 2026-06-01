@@ -1,6 +1,11 @@
 import os, json, sqlite3, hashlib, hmac, re, requests, base64
-from datetime import datetime, date, timedelta
+from datetime import datetime, date, timedelta, timezone
 from functools import wraps
+
+# ── 日本時間（JST）で今日の日付を取得 ─────────────────────────
+JST = timezone(timedelta(hours=9))
+def today_jst():
+    return datetime.now(JST).strftime('%Y-%m-%d')
 from flask import Flask, request, jsonify, send_from_directory, session, redirect, url_for, render_template_string
 
 app = Flask(__name__, static_folder='www')
@@ -215,7 +220,7 @@ def init_db():
 
 # ── 車両現在ステータス取得 ──────────────────────────────────
 def get_vehicle_status(vehicle_id):
-    today = date.today().isoformat()
+    today = today_jst()
     conn = get_db()
     row = conn.execute(
         '''SELECT * FROM events WHERE vehicle_id=? AND start_date<=? AND (end_date IS NULL OR end_date>=?)
@@ -249,7 +254,7 @@ CONV_STATE = {}   # source_id → state dict
 
 def parse_date(s):
     s = s.strip().rstrip('〜~～')
-    now = date.today()
+    now = datetime.now(JST).date()
     m = re.match(r'^(\d{1,2})[/月](\d{1,2})日?$', s)
     if m:
         return date(now.year, int(m.group(1)), int(m.group(2))).isoformat()
@@ -307,7 +312,7 @@ def is_date_token(t):
 
 def register_event(v, status, state):
     """DBにイベントを登録し、確認メッセージを返す"""
-    today   = date.today().isoformat()
+    today   = today_jst()                          # C) JST対応
     start_d = state.get('start_date') or today
     end_d   = state.get('end_date')
     staff   = state.get('staff') or ''
@@ -316,7 +321,6 @@ def register_event(v, status, state):
     mileage = state.get('mileage') or ''
     remarks = state.get('notes') or ''
 
-    # notes列に走行距離と備考をまとめて保存
     notes_parts = []
     if mileage:
         notes_parts.append(f"走行距離:{mileage}km")
@@ -325,10 +329,26 @@ def register_event(v, status, state):
     notes_str = ' / '.join(notes_parts)
 
     conn = get_db()
-    conn.execute(
+    c    = conn.cursor()
+
+    # A) B) 既存のオープンイベント（終了日なし or 将来終了）を自動クローズ
+    # 新しいイベントの開始日以降は新しいイベントが有効になるため、前のイベントを締める
+    if status == '在庫':
+        # 返却・キャンセル: 現在アクティブなイベントをすべてクローズ
+        c.execute('''UPDATE events SET end_date=?
+                     WHERE vehicle_id=? AND (end_date IS NULL OR end_date >= ?)''',
+                  (start_d, v['id'], start_d))
+    else:
+        # 貸出・予約等: 終了日のない既存イベントを新しい開始日の前日でクローズ
+        prev_end = (datetime.strptime(start_d, '%Y-%m-%d') - timedelta(days=1)).strftime('%Y-%m-%d')
+        c.execute('''UPDATE events SET end_date=?
+                     WHERE vehicle_id=? AND end_date IS NULL AND start_date < ?''',
+                  (prev_end, v['id'], start_d))
+
+    c.execute(
         'INSERT INTO events (vehicle_id,status,start_date,end_date,staff,client,category,notes,created_at) VALUES (?,?,?,?,?,?,?,?,?)',
         (v['id'], status, start_d, end_d, staff, client, category, notes_str,
-         datetime.now().strftime('%Y-%m-%d %H:%M:%S')))
+         datetime.now(JST).strftime('%Y-%m-%d %H:%M:%S')))
     conn.commit()
     conn.close()
 
@@ -455,7 +475,7 @@ def process_line_message(text, source_id='', user_name=''):
 
     # ── 一覧・状況 ──
     if text in ['一覧', '状況', 'status']:
-        today = date.today().isoformat()
+        today = today_jst()
         conn = get_db()
         total    = conn.execute('SELECT COUNT(*) FROM vehicles').fetchone()[0]
         rentals  = conn.execute(
@@ -468,7 +488,7 @@ def process_line_message(text, source_id='', user_name=''):
             "SELECT COUNT(DISTINCT vehicle_id) FROM events WHERE status IN ('車検中','点検中','修理中') AND start_date<=? AND (end_date IS NULL OR end_date>=?)",
             (today, today)).fetchone()[0]
         conn.close()
-        return (f"📊 {date.today().strftime('%m/%d')} 車両状況\n"
+        return (f"📊 {datetime.now(JST).strftime('%m/%d')} 車両状況\n"
                 f"総台数: {total}台\n"
                 f"🔴 貸出中: {rentals}台\n"
                 f"🟡 予約済: {reserved}台\n"
