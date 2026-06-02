@@ -190,7 +190,7 @@ function lookupVehicle() {
   selectedVehicles  = [];
   updateSubmitBtn();
 
-  if (!num || num.length < 3) {
+  if (!num || num.length < 1) {
     info.textContent = '番号を入力してください';
     info.className = 'vehicle-info empty';
     selWrap.classList.add('hide');

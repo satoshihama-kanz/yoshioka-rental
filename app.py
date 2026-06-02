@@ -522,7 +522,7 @@ def process_line_message(text, source_id='', user_name=''):
                 f"🟢 在庫: {total - rentals - reserved - repairs}台")
 
     # ── 車番? ──
-    m = re.match(r'^(\d{3,5})[?？]$', text)
+    m = re.match(r'^(\d{2,5})[?？]$', text)
     if m:
         number = m.group(1)
         v = find_vehicle_by_number(number)
@@ -542,7 +542,7 @@ def process_line_message(text, source_id='', user_name=''):
         return msg
 
     # ── メインコマンド：車番＋操作 ──
-    m = re.match(r'^(\d{3,5})\s+(.+)$', text)
+    m = re.match(r'^(\d{2,5})\s+(.+)$', text)
     if m:
         number = m.group(1)
         rest   = m.group(2).strip()
@@ -973,11 +973,9 @@ def line_webhook():
             reply_token = event.get('replyToken', '')
             source_id   = (group_id + '_' + user_id) if group_id else user_id
             reply = process_line_message(text, source_id, user_id[:8])
-            if reply is None:
-                # 未対応 → DBに保存して短い返信
-                store_pending(text, source_id, user_id[:8])
-                reply = '⚠️ 未対応メッセージへ追加しました'
-            send_line_reply(reply_token, reply)
+            if reply is not None:
+                send_line_reply(reply_token, reply)
+            # 解析できないメッセージは無視（グループの通常会話に干渉しない）
     return 'OK'
 
 # ── 静的ファイル（要ログイン） ──────────────────────────────
