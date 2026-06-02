@@ -494,6 +494,11 @@ def process_line_message(text, source_id='', user_name=''):
     if source_id in CONV_STATE:
         return process_conv_state(text, source_id)
 
+    # ── フォームURL送信 ──
+    if text in ['フォーム', '登録', '登録フォーム', 'form']:
+        return ("📱 入力フォームはこちら👇\nhttps://yoshioka-rental-1.onrender.com/liff\n"
+                "タップして開いてください")
+
     # ── 一覧・状況 ──
     if text in ['一覧', '状況', 'status']:
         today = today_jst()
@@ -832,6 +837,64 @@ def api_pending_remind():
     lines.append(f"{'─'*18}\n📋 Webシステムで処理済みにしてください\nhttps://yoshioka-rental-1.onrender.com")
     send_line_push(group_id, '\n'.join(lines))
     return jsonify({'sent': True, 'count': len(items)})
+
+# ── LIFF フォーム ────────────────────────────────────────────
+@app.route('/liff')
+def liff_form():
+    return send_from_directory('www', 'liff.html')
+
+@app.route('/api/liff/vehicles')
+def api_liff_vehicles():
+    """車番検索（LIFF用・認証不要）"""
+    number = request.args.get('number', '').strip()
+    if not number:
+        return jsonify([])
+    conn = get_db()
+    rows = [dict(r) for r in conn.execute(
+        'SELECT * FROM vehicles WHERE number=? ORDER BY id', (number,)).fetchall()]
+    conn.close()
+    return jsonify(rows)
+
+@app.route('/api/liff/submit', methods=['POST'])
+def api_liff_submit():
+    """フォーム送信（LIFF用）"""
+    d   = request.get_json() or {}
+    key = request.headers.get('X-Admin-Key','') or d.get('key','')
+    if key != ADMIN_PASS:
+        return jsonify({'error': 'Unauthorized'}), 401
+
+    action_map = {
+        '配車':'貸出中','予約':'予約済','修理':'修理中',
+        '返却':'在庫','車検':'車検中','点検':'点検中',
+    }
+    status = action_map.get(d.get('action',''))
+    if not status:
+        return jsonify({'error': 'Invalid action'}), 400
+
+    conn = get_db()
+    v    = conn.execute('SELECT * FROM vehicles WHERE id=?', (d.get('vehicle_id'),)).fetchone()
+    conn.close()
+    if not v:
+        return jsonify({'error': '車両が見つかりません'}), 404
+    v = dict(v)
+
+    state = {
+        'start_date': d.get('start_date') or today_jst(),
+        'end_date':   d.get('end_date') or None,
+        'staff':      d.get('staff',''),
+        'client':     d.get('client',''),
+        'category':   d.get('category',''),
+        'mileage':    d.get('mileage',''),
+        'notes':      d.get('notes',''),
+    }
+    msg = register_event(v, status, state)
+
+    # グループLINEに通知
+    group_id = get_setting('line_group_id')
+    if group_id:
+        send_line_push(group_id, f"📱 フォームより登録\n{msg}")
+
+    return jsonify({'ok': True, 'message': msg})
 
 # ── 車両マスタ一括追加（管理者専用） ────────────────────────
 @app.route('/api/admin/add-vehicles', methods=['POST'])

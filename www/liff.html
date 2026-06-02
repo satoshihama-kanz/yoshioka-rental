@@ -1,0 +1,368 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>車両状態登録</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:'Meiryo',sans-serif;background:#f0f2f5;min-height:100vh}
+.header{background:#1a3a5c;color:white;padding:14px 16px;text-align:center;position:sticky;top:0;z-index:10;box-shadow:0 2px 8px rgba(0,0,0,0.3)}
+.header h1{font-size:17px;font-weight:bold}
+.container{max-width:520px;margin:0 auto;padding:12px 12px 80px}
+.section{background:white;border-radius:10px;padding:14px;margin-bottom:10px;box-shadow:0 1px 4px rgba(0,0,0,0.08)}
+.section-num{display:inline-block;background:#1a3a5c;color:white;border-radius:50%;width:22px;height:22px;text-align:center;line-height:22px;font-size:12px;font-weight:bold;margin-right:6px}
+.section-title{font-size:13px;font-weight:bold;color:#333;margin-bottom:10px;display:flex;align-items:center}
+label{display:block;font-size:12px;color:#888;margin-bottom:4px;font-weight:bold}
+input[type=text],input[type=number],input[type=date],select,textarea{
+  width:100%;padding:10px 12px;border:1.5px solid #ddd;border-radius:8px;
+  font-size:15px;font-family:inherit;background:#fff;appearance:none;-webkit-appearance:none;
+  transition:border-color 0.2s}
+input:focus,select:focus,textarea:focus{outline:none;border-color:#1a3a5c}
+.vehicle-info{margin-top:8px;padding:8px 12px;background:#e8f4fd;border-radius:6px;font-size:14px;color:#1a3a5c;font-weight:bold;min-height:36px;display:flex;align-items:center}
+.vehicle-info.error{background:#fdecea;color:#c62828}
+.vehicle-info.empty{background:#f5f5f5;color:#aaa}
+.date-row{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.form-row{margin-bottom:10px}
+.form-row:last-child{margin-bottom:0}
+.required::after{content:'*';color:#f44336;margin-left:3px}
+.action-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.action-btn{padding:12px 8px;border:2px solid #ddd;border-radius:8px;background:white;font-size:14px;cursor:pointer;text-align:center;transition:all 0.2s;font-family:inherit}
+.action-btn.selected{border-color:#1a3a5c;background:#1a3a5c;color:white}
+.action-btn .icon{font-size:20px;display:block;margin-bottom:4px}
+.submit-wrap{position:fixed;bottom:0;left:0;right:0;background:white;padding:12px 16px;box-shadow:0 -2px 8px rgba(0,0,0,0.1)}
+.btn-submit{width:100%;max-width:520px;display:block;margin:0 auto;padding:14px;background:#4CAF50;color:white;border:none;border-radius:10px;font-size:17px;font-weight:bold;cursor:pointer;transition:all 0.2s}
+.btn-submit:disabled{background:#ccc;cursor:not-allowed}
+.btn-submit:not(:disabled):active{background:#388E3C;transform:scale(0.98)}
+.result{padding:12px;border-radius:8px;margin-top:10px;font-size:14px;text-align:center;display:none}
+.result.success{background:#e8f5e9;color:#2e7d32;display:block}
+.result.error{background:#fdecea;color:#c62828;display:block}
+select option[value=""]{color:#aaa}
+.hide{display:none!important}
+.vehicle-select-wrap{margin-top:8px}
+</style>
+</head>
+<body>
+<div class="header"><h1>🚗 車両状態登録フォーム</h1></div>
+<div class="container">
+
+  <!-- ① 車両番号 -->
+  <div class="section">
+    <div class="section-title"><span class="section-num">1</span>車両番号</div>
+    <div class="form-row">
+      <label class="required">車番（4桁）</label>
+      <input type="number" id="vehicleNumber" placeholder="例: 6401" oninput="lookupVehicle()" inputmode="numeric" pattern="[0-9]*">
+      <div class="vehicle-info empty" id="vehicleInfo">番号を入力してください</div>
+      <div class="vehicle-select-wrap hide" id="vehicleSelectWrap">
+        <label style="margin-top:8px">同じ車番の車両が複数あります。選択してください：</label>
+        <select id="vehicleSelect" onchange="selectVehicle()">
+          <option value="">選択してください</option>
+        </select>
+      </div>
+    </div>
+  </div>
+
+  <!-- ② 要件 -->
+  <div class="section">
+    <div class="section-title"><span class="section-num">2</span>要件</div>
+    <div class="action-grid">
+      <button class="action-btn" onclick="selectAction('配車')" id="btn-配車">
+        <span class="icon">🚗</span>配車（貸出）
+      </button>
+      <button class="action-btn" onclick="selectAction('予約')" id="btn-予約">
+        <span class="icon">📅</span>予約
+      </button>
+      <button class="action-btn" onclick="selectAction('修理')" id="btn-修理">
+        <span class="icon">🔧</span>修理・点検
+      </button>
+      <button class="action-btn" onclick="selectAction('返却')" id="btn-返却">
+        <span class="icon">✅</span>返却
+      </button>
+    </div>
+  </div>
+
+  <!-- ③ 日付 -->
+  <div class="section" id="dateSection">
+    <div class="section-title"><span class="section-num">3</span>期間</div>
+    <div class="date-row">
+      <div class="form-row">
+        <label class="required">開始日</label>
+        <input type="date" id="startDate">
+      </div>
+      <div class="form-row" id="endDateWrap">
+        <label>終了日（任意）</label>
+        <input type="date" id="endDate">
+      </div>
+    </div>
+  </div>
+
+  <!-- 顧客名 -->
+  <div class="section" id="clientSection">
+    <div class="section-title">🏢 顧客名・取引先</div>
+    <input type="text" id="client" placeholder="例: 滋賀トヨタ 今井様">
+  </div>
+
+  <!-- 適用 -->
+  <div class="section" id="categorySection">
+    <div class="section-title">📋 適用</div>
+    <select id="category">
+      <option value="">選択してください（任意）</option>
+      <option value="損保">損保</option>
+      <option value="代車">代車</option>
+      <option value="マンスリー">マンスリー</option>
+      <option value="ほか">ほか</option>
+    </select>
+  </div>
+
+  <!-- 担当 -->
+  <div class="section" id="staffSection">
+    <div class="section-title">👤 担当者</div>
+    <div class="form-row">
+      <label>社員を選択</label>
+      <select id="staffSelect" onchange="staffChanged()">
+        <option value="">選択してください</option>
+        <optgroup label="京都">
+          <option value="平田弘子">平田弘子</option>
+          <option value="内田麻鈴">内田麻鈴</option>
+          <option value="山本圭太">山本圭太</option>
+          <option value="吉岡佑真">吉岡佑真</option>
+          <option value="市川久登">市川久登</option>
+          <option value="田中杏果">田中杏果</option>
+          <option value="山田浩子">山田浩子</option>
+          <option value="笹内杏莉">笹内杏莉</option>
+          <option value="藤田頼人">藤田頼人</option>
+          <option value="北川舞花">北川舞花</option>
+        </optgroup>
+        <optgroup label="滋賀">
+          <option value="奥谷慎太郎">奥谷慎太郎</option>
+          <option value="福田竜也">福田竜也</option>
+          <option value="川上那歩">川上那歩</option>
+          <option value="田中奈々実">田中奈々実</option>
+          <option value="野々村正">野々村正</option>
+        </optgroup>
+        <option value="__other__">その他（直接入力）</option>
+      </select>
+    </div>
+    <div class="form-row hide" id="staffInputWrap">
+      <label>担当者名を入力</label>
+      <input type="text" id="staffInput" placeholder="担当者名">
+    </div>
+  </div>
+
+  <!-- 距離 -->
+  <div class="section" id="mileageSection">
+    <div class="section-title">📊 走行距離（不正防止用）</div>
+    <input type="number" id="mileage" placeholder="例: 28026" inputmode="numeric">
+  </div>
+
+  <!-- 備考 -->
+  <div class="section">
+    <div class="section-title">📝 備考（任意）</div>
+    <input type="text" id="notes" placeholder="特記事項があれば">
+  </div>
+
+  <div class="result" id="result"></div>
+</div>
+
+<div class="submit-wrap">
+  <button class="btn-submit" id="submitBtn" onclick="submitForm()" disabled>
+    登録する
+  </button>
+</div>
+
+<script>
+const API_BASE = '';
+let selectedVehicleId = null;
+let selectedVehicles  = [];
+let selectedAction    = null;
+let lookupTimer       = null;
+
+// 今日の日付をデフォルトに
+document.getElementById('startDate').value = new Date().toLocaleDateString('sv-SE');
+
+// 車番入力→車種検索
+function lookupVehicle() {
+  clearTimeout(lookupTimer);
+  const num = document.getElementById('vehicleNumber').value.trim();
+  const info = document.getElementById('vehicleInfo');
+  const selWrap = document.getElementById('vehicleSelectWrap');
+  selectedVehicleId = null;
+  selectedVehicles  = [];
+  updateSubmitBtn();
+
+  if (!num || num.length < 3) {
+    info.textContent = '番号を入力してください';
+    info.className = 'vehicle-info empty';
+    selWrap.classList.add('hide');
+    return;
+  }
+  info.textContent = '検索中…';
+  info.className = 'vehicle-info empty';
+
+  lookupTimer = setTimeout(async () => {
+    try {
+      const res  = await fetch(`${API_BASE}/api/liff/vehicles?number=${encodeURIComponent(num)}`);
+      const data = await res.json();
+      if (data.length === 0) {
+        info.textContent = `車番 ${num} は登録されていません`;
+        info.className = 'vehicle-info error';
+        selWrap.classList.add('hide');
+      } else if (data.length === 1) {
+        selectedVehicleId = data[0].id;
+        info.textContent  = `${data[0].car_type}  ${data[0].full_number || ''}`;
+        info.className    = 'vehicle-info';
+        selWrap.classList.add('hide');
+      } else {
+        // 複数台
+        selectedVehicles = data;
+        info.textContent  = `${data.length}台該当。下で選択してください`;
+        info.className    = 'vehicle-info';
+        const sel = document.getElementById('vehicleSelect');
+        sel.innerHTML = '<option value="">選択してください</option>';
+        data.forEach(v => {
+          const o = document.createElement('option');
+          o.value       = v.id;
+          o.textContent = `${v.number} ${v.car_type} (${v.full_number || ''})`;
+          sel.appendChild(o);
+        });
+        selWrap.classList.remove('hide');
+      }
+    } catch(e) {
+      info.textContent = '通信エラー';
+      info.className = 'vehicle-info error';
+    }
+    updateSubmitBtn();
+  }, 400);
+}
+
+function selectVehicle() {
+  const sel = document.getElementById('vehicleSelect');
+  selectedVehicleId = sel.value ? parseInt(sel.value) : null;
+  const v = selectedVehicles.find(v => v.id == sel.value);
+  if (v) {
+    document.getElementById('vehicleInfo').textContent = `${v.car_type}  ${v.full_number || ''}`;
+  }
+  updateSubmitBtn();
+}
+
+// 要件選択
+function selectAction(action) {
+  selectedAction = action;
+  document.querySelectorAll('.action-btn').forEach(b => b.classList.remove('selected'));
+  document.getElementById('btn-' + action).classList.add('selected');
+  updateSections();
+  updateSubmitBtn();
+}
+
+function updateSections() {
+  const a = selectedAction;
+  // 日付
+  document.getElementById('dateSection').classList.toggle('hide', false);
+  // 終了日
+  document.getElementById('endDateWrap').classList.toggle('hide', a === '返却');
+  // 顧客名
+  document.getElementById('clientSection').classList.toggle('hide', a === '修理' || a === '返却');
+  // 適用
+  document.getElementById('categorySection').classList.toggle('hide', a === '修理' || a === '返却');
+  // 担当
+  document.getElementById('staffSection').classList.toggle('hide', false);
+  // 距離
+  document.getElementById('mileageSection').classList.toggle('hide', a === '予約' || a === '修理');
+}
+
+// 担当選択
+function staffChanged() {
+  const sel = document.getElementById('staffSelect').value;
+  const wrap = document.getElementById('staffInputWrap');
+  wrap.classList.toggle('hide', sel !== '__other__');
+}
+
+function getStaff() {
+  const sel = document.getElementById('staffSelect').value;
+  if (sel === '__other__') return document.getElementById('staffInput').value.trim();
+  return sel;
+}
+
+// 送信ボタン活性チェック
+function updateSubmitBtn() {
+  const ok = selectedVehicleId && selectedAction;
+  document.getElementById('submitBtn').disabled = !ok;
+}
+
+// 送信
+async function submitForm() {
+  const btn = document.getElementById('submitBtn');
+  btn.disabled  = true;
+  btn.textContent = '送信中…';
+  const result = document.getElementById('result');
+  result.className = 'result';
+  result.style.display = 'none';
+
+  const payload = {
+    key:        '3155',
+    vehicle_id: selectedVehicleId,
+    action:     selectedAction,
+    start_date: document.getElementById('startDate').value || null,
+    end_date:   document.getElementById('endDate').value   || null,
+    client:     document.getElementById('client').value.trim(),
+    category:   document.getElementById('category').value,
+    staff:      getStaff(),
+    mileage:    document.getElementById('mileage').value.trim(),
+    notes:      document.getElementById('notes').value.trim(),
+  };
+
+  try {
+    const res  = await fetch(`${API_BASE}/api/liff/submit`, {
+      method:  'POST',
+      headers: {'Content-Type': 'application/json'},
+      body:    JSON.stringify(payload),
+    });
+    const data = await res.json();
+    if (res.ok && data.ok) {
+      result.className   = 'result success';
+      result.textContent = '✅ 登録しました！\n' + (data.message || '');
+      result.style.display = 'block';
+      result.style.whiteSpace = 'pre-wrap';
+      btn.textContent = '登録完了 ✅';
+      btn.style.background = '#4CAF50';
+      // フォームリセット（3秒後）
+      setTimeout(() => {
+        resetForm();
+        btn.textContent = '登録する';
+        btn.disabled = true;
+      }, 3000);
+    } else {
+      throw new Error(data.error || '登録に失敗しました');
+    }
+  } catch(e) {
+    result.className   = 'result error';
+    result.textContent = '❌ エラー: ' + e.message;
+    result.style.display = 'block';
+    btn.disabled  = false;
+    btn.textContent = '登録する';
+  }
+}
+
+function resetForm() {
+  document.getElementById('vehicleNumber').value = '';
+  document.getElementById('vehicleInfo').textContent = '番号を入力してください';
+  document.getElementById('vehicleInfo').className = 'vehicle-info empty';
+  document.getElementById('vehicleSelectWrap').classList.add('hide');
+  document.getElementById('client').value  = '';
+  document.getElementById('category').value = '';
+  document.getElementById('staffSelect').value = '';
+  document.getElementById('staffInput').value = '';
+  document.getElementById('staffInputWrap').classList.add('hide');
+  document.getElementById('mileage').value = '';
+  document.getElementById('notes').value   = '';
+  document.getElementById('endDate').value = '';
+  document.getElementById('startDate').value = new Date().toLocaleDateString('sv-SE');
+  document.getElementById('result').style.display = 'none';
+  document.querySelectorAll('.action-btn').forEach(b => b.classList.remove('selected'));
+  selectedVehicleId = null;
+  selectedAction    = null;
+  updateSections();
+}
+</script>
+</body>
+</html>
