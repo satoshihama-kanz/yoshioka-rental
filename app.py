@@ -814,6 +814,110 @@ def api_pending_resolve(pid):
     conn.close()
     return jsonify({'ok': True})
 
+# ── 朝の一斉報告 ────────────────────────────────────────────
+MORNING_STAFF = [
+    '平田弘子','内田麻鈴','山本圭太','吉岡佑真','市川久登',
+    '奥谷慎太郎','福田竜也','川上那歩','田中杏果','田中奈々実',
+]
+
+def match_staff(ev_staff):
+    """イベントの担当者フィールドをスタッフリストにマッチング"""
+    if not ev_staff: return 'その他'
+    for s in MORNING_STAFF:
+        if ev_staff in s or s in ev_staff:
+            return s
+    return ev_staff
+
+def build_morning_report():
+    today = today_jst()
+    conn  = get_db()
+
+    vehicles = conn.execute(
+        'SELECT * FROM vehicles ORDER BY CAST(number AS INTEGER)'
+    ).fetchall()
+
+    # 今日アクティブなイベント（最新1件/車両）
+    active = {}
+    for r in conn.execute(
+        '''SELECT e.*, v.number as vnum, v.car_type as vtype
+           FROM events e JOIN vehicles v ON e.vehicle_id=v.id
+           WHERE e.start_date<=? AND (e.end_date IS NULL OR e.end_date>=?)
+             AND e.status != "在庫"
+           ORDER BY e.start_date DESC''', (today, today)
+    ).fetchall():
+        if r['vehicle_id'] not in active:
+            active[r['vehicle_id']] = dict(r)
+    conn.close()
+
+    stock, reserves, maint = [], {}, []
+    for v in vehicles:
+        v = dict(v)
+        ev = active.get(v['id'])
+        if ev is None:
+            stock.append(v)
+        elif ev['status'] == '予約済':
+            staff = match_staff(ev.get('staff',''))
+            reserves.setdefault(staff, []).append((v, ev))
+        elif ev['status'] in ('車検中','点検中','修理中'):
+            maint.append((v, ev))
+
+    today_dt = datetime.strptime(today, '%Y-%m-%d')
+    lines = [f"おはようございます🚗\n{today_dt.month}月{today_dt.day}日 車両稼働状況\n"]
+
+    # 在庫
+    lines.append("■■■　在庫　■■■")
+    if stock:
+        for v in stock:
+            lines.append(f"{v['number']} {v['car_type']}")
+    else:
+        lines.append("（在庫なし）")
+
+    # 予約
+    lines.append("\n■■■　予約　■■■")
+    shown = set()
+    for staff in MORNING_STAFF:
+        lines.append(f"\n【{staff}】")
+        shown.add(staff)
+        if staff in reserves:
+            for v, ev in reserves[staff]:
+                lines.append(f"{v['number']} {v['car_type']}")
+                parts = []
+                if ev.get('start_date'):
+                    d = datetime.strptime(ev['start_date'], '%Y-%m-%d')
+                    parts.append(f"{d.month}月{d.day}日〜")
+                if ev.get('client'):  parts.append(ev['client'])
+                if ev.get('category'): parts.append(ev['category'])
+                if parts: lines.append(f"({' '.join(parts)})")
+    # リスト外の担当者
+    for staff, items in reserves.items():
+        if staff not in shown:
+            lines.append(f"\n【{staff}】")
+            for v, ev in items:
+                lines.append(f"{v['number']} {v['car_type']}")
+
+    # 車検・修理・点検
+    lines.append("\n■■■　車検・修理・点検　■■■")
+    if maint:
+        for v, ev in maint:
+            note = ev.get('notes') or ev.get('status','')
+            lines.append(f"{v['number']} {v['car_type']}（{note}）")
+    else:
+        lines.append("（なし）")
+
+    return '\n'.join(lines)
+
+@app.route('/api/morning-report', methods=['GET', 'POST'])
+def api_morning_report():
+    key = request.headers.get('X-Admin-Key','') or request.args.get('key','')
+    if key != ADMIN_PASS:
+        return jsonify({'error': 'Unauthorized'}), 401
+    msg      = build_morning_report()
+    group_id = get_setting('line_group_id')
+    if group_id and LINE_CHANNEL_TOKEN:
+        send_line_push(group_id, msg)
+        return jsonify({'sent': True})
+    return jsonify({'sent': False, 'reason': 'group_id or token not set'})
+
 @app.route('/api/pending/remind', methods=['GET', 'POST'])
 def api_pending_remind():
     key = request.headers.get('X-Admin-Key','') or request.args.get('key','')
