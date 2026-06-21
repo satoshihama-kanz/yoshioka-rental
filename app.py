@@ -159,7 +159,10 @@ def init_db():
             car_type TEXT,
             year TEXT,
             full_number TEXT,
-            inspection_date TEXT
+            inspection_date TEXT,
+            region TEXT DEFAULT '',
+            studless INTEGER DEFAULT 0,
+            is_rental_other INTEGER DEFAULT 0
         );
         CREATE TABLE IF NOT EXISTS events (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -171,7 +174,10 @@ def init_db():
             client TEXT,
             category TEXT,
             notes TEXT,
-            created_at TEXT
+            created_at TEXT,
+            location TEXT DEFAULT '',
+            washed INTEGER DEFAULT 0,
+            interior_cleaned INTEGER DEFAULT 0
         );
         CREATE TABLE IF NOT EXISTS pending_items (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -187,6 +193,21 @@ def init_db():
             value TEXT
         );
     ''')
+    conn.commit()
+
+    # 既存DBへのカラム追加（既に存在する場合は無視）
+    for sql in [
+        "ALTER TABLE vehicles ADD COLUMN region TEXT DEFAULT ''",
+        "ALTER TABLE vehicles ADD COLUMN studless INTEGER DEFAULT 0",
+        "ALTER TABLE vehicles ADD COLUMN is_rental_other INTEGER DEFAULT 0",
+        "ALTER TABLE events ADD COLUMN location TEXT DEFAULT ''",
+        "ALTER TABLE events ADD COLUMN washed INTEGER DEFAULT 0",
+        "ALTER TABLE events ADD COLUMN interior_cleaned INTEGER DEFAULT 0",
+    ]:
+        try:
+            c.execute(sql)
+        except Exception:
+            pass
     conn.commit()
 
     base = os.path.dirname(__file__)
@@ -320,10 +341,19 @@ def register_event(v, status, state):
     category= state.get('category') or ''
     mileage = state.get('mileage') or ''
     remarks = state.get('notes') or ''
+    location= state.get('location') or ''
+    washed  = 1 if state.get('washed') else 0
+    interior_cleaned = 1 if state.get('interior_cleaned') else 0
 
     notes_parts = []
     if mileage:
         notes_parts.append(f"走行距離:{mileage}km")
+    if location:
+        notes_parts.append(f"所在地:{location}")
+    if washed:
+        notes_parts.append("洗車済")
+    if interior_cleaned:
+        notes_parts.append("室内清掃済")
     if remarks:
         notes_parts.append(remarks)
     notes_str = ' / '.join(notes_parts)
@@ -346,9 +376,9 @@ def register_event(v, status, state):
                   (prev_end, v['id'], start_d))
 
     c.execute(
-        'INSERT INTO events (vehicle_id,status,start_date,end_date,staff,client,category,notes,created_at) VALUES (?,?,?,?,?,?,?,?,?)',
+        'INSERT INTO events (vehicle_id,status,start_date,end_date,staff,client,category,notes,created_at,location,washed,interior_cleaned) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)',
         (v['id'], status, start_d, end_d, staff, client, category, notes_str,
-         datetime.now(JST).strftime('%Y-%m-%d %H:%M:%S')))
+         datetime.now(JST).strftime('%Y-%m-%d %H:%M:%S'), location, washed, interior_cleaned))
     conn.commit()
     conn.close()
 
@@ -983,14 +1013,37 @@ def api_liff_submit():
     v = dict(v)
 
     state = {
-        'start_date': d.get('start_date') or today_jst(),
-        'end_date':   d.get('end_date') or None,
-        'staff':      d.get('staff',''),
-        'client':     d.get('client',''),
-        'category':   d.get('category',''),
-        'mileage':    d.get('mileage',''),
-        'notes':      d.get('notes',''),
+        'start_date':      d.get('start_date') or today_jst(),
+        'end_date':        d.get('end_date') or None,
+        'staff':           d.get('staff',''),
+        'client':          d.get('client',''),
+        'category':        d.get('category',''),
+        'mileage':         d.get('mileage',''),
+        'notes':           d.get('notes',''),
+        'location':        d.get('location',''),
+        'washed':          d.get('washed', False),
+        'interior_cleaned':d.get('interior_cleaned', False),
     }
+
+    # 車両マスタの更新（他社借り・スタッドレス・地域）
+    update_fields = []
+    update_vals   = []
+    if 'studless' in d:
+        update_fields.append('studless=?')
+        update_vals.append(1 if d['studless'] else 0)
+    if 'is_rental_other' in d:
+        update_fields.append('is_rental_other=?')
+        update_vals.append(1 if d['is_rental_other'] else 0)
+    if 'region' in d and d['region']:
+        update_fields.append('region=?')
+        update_vals.append(d['region'])
+    if update_fields:
+        conn2 = get_db()
+        conn2.execute(f"UPDATE vehicles SET {','.join(update_fields)} WHERE id=?",
+                      update_vals + [v['id']])
+        conn2.commit()
+        conn2.close()
+
     msg = register_event(v, status, state)
 
     # グループLINEに通知

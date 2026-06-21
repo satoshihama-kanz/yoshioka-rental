@@ -276,10 +276,16 @@ function renderCalendar() {
             const { status, event: ev } = getVehicleStatusOnDate(v.id, ds);
             const sc = statusClass[status] || 'unknown';
             let tip = status;
+            if (ev && ev.staff)  tip += ` ${ev.staff}`;
             if (ev && ev.client) tip += ` / ${ev.client}`;
+            // セル内テキスト：貸出中・予約済のとき顧客名の先頭4文字を表示
+            let cellText = '';
+            if (ev && ev.client && (status === '貸出中' || status === '予約済')) {
+                cellText = `<span class="cal-cell-text">${ev.client.slice(0,5)}</span>`;
+            }
             html += `<td class="cal-cell ${sc}" onclick="openDetail(${v.id})"
-                onmouseenter="showTip(event,'${v.number} ${v.car_type}: ${tip.replace(/'/g,"")}')"
-                onmouseleave="hideTip()"></td>`;
+                onmouseenter="showTip(event,'${(v.number+' '+v.car_type+': '+tip).replace(/'/g,"")}')"
+                onmouseleave="hideTip()">${cellText}</td>`;
         });
         html += '</tr>';
     });

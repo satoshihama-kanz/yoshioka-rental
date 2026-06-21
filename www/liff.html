@@ -155,6 +155,37 @@ select option[value=""]{color:#aaa}
     <input type="number" id="mileage" placeholder="例: 28026" inputmode="numeric">
   </div>
 
+  <!-- 所在地 -->
+  <div class="section">
+    <div class="section-title">📍 現在の所在地</div>
+    <select id="location">
+      <option value="">選択してください（任意）</option>
+      <option value="京都本社">京都本社</option>
+      <option value="滋賀支店">滋賀支店</option>
+      <option value="工場">工場</option>
+      <option value="その他">その他</option>
+    </select>
+  </div>
+
+  <!-- 車両状況チェック -->
+  <div class="section">
+    <div class="section-title">🚿 車両状況チェック</div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:4px;">
+      <label style="display:flex;align-items:center;gap:8px;font-size:14px;font-weight:bold;cursor:pointer;">
+        <input type="checkbox" id="washed" style="width:20px;height:20px;accent-color:#1a3a5c;"> 洗車済み
+      </label>
+      <label style="display:flex;align-items:center;gap:8px;font-size:14px;font-weight:bold;cursor:pointer;">
+        <input type="checkbox" id="interiorCleaned" style="width:20px;height:20px;accent-color:#1a3a5c;"> 室内清掃済み
+      </label>
+      <label style="display:flex;align-items:center;gap:8px;font-size:14px;font-weight:bold;cursor:pointer;">
+        <input type="checkbox" id="studless" style="width:20px;height:20px;accent-color:#1a3a5c;"> スタッドレスタイヤ
+      </label>
+      <label style="display:flex;align-items:center;gap:8px;font-size:14px;font-weight:bold;cursor:pointer;" id="rentalOtherLabel">
+        <input type="checkbox" id="isRentalOther" style="width:20px;height:20px;accent-color:#f44336;"> 他社借りレンタカー
+      </label>
+    </div>
+  </div>
+
   <!-- 備考 -->
   <div class="section">
     <div class="section-title">📝 備考（任意）</div>
@@ -299,16 +330,21 @@ async function submitForm() {
   result.style.display = 'none';
 
   const payload = {
-    key:        '3155',
-    vehicle_id: selectedVehicleId,
-    action:     selectedAction,
-    start_date: document.getElementById('startDate').value || null,
-    end_date:   document.getElementById('endDate').value   || null,
-    client:     document.getElementById('client').value.trim(),
-    category:   document.getElementById('category').value,
-    staff:      getStaff(),
-    mileage:    document.getElementById('mileage').value.trim(),
-    notes:      document.getElementById('notes').value.trim(),
+    key:              '3155',
+    vehicle_id:       selectedVehicleId,
+    action:           selectedAction,
+    start_date:       document.getElementById('startDate').value || null,
+    end_date:         document.getElementById('endDate').value   || null,
+    client:           document.getElementById('client').value.trim(),
+    category:         document.getElementById('category').value,
+    staff:            getStaff(),
+    mileage:          document.getElementById('mileage').value.trim(),
+    notes:            document.getElementById('notes').value.trim(),
+    location:         document.getElementById('location').value,
+    washed:           document.getElementById('washed').checked,
+    interior_cleaned: document.getElementById('interiorCleaned').checked,
+    studless:         document.getElementById('studless').checked,
+    is_rental_other:  document.getElementById('isRentalOther').checked,
   };
 
   try {
@@ -356,6 +392,11 @@ function resetForm() {
   document.getElementById('mileage').value = '';
   document.getElementById('notes').value   = '';
   document.getElementById('endDate').value = '';
+  document.getElementById('location').value = '';
+  document.getElementById('washed').checked = false;
+  document.getElementById('interiorCleaned').checked = false;
+  document.getElementById('studless').checked = false;
+  document.getElementById('isRentalOther').checked = false;
   document.getElementById('startDate').value = new Date().toLocaleDateString('sv-SE');
   document.getElementById('result').style.display = 'none';
   document.querySelectorAll('.action-btn').forEach(b => b.classList.remove('selected'));

@@ -106,7 +106,7 @@ thead .cal-vehicle-col { position: sticky; left: 0; top: 0; z-index: 3; backgrou
 .cal-date-header.today { background: #FF5722; }
 .cal-date-header.sunday { background: #7B1FA2; }
 .cal-date-header.saturday { background: #1565C0; }
-.cal-cell { min-width: 36px; height: 36px; text-align: center; vertical-align: middle; cursor: pointer; position: relative; }
+.cal-cell { min-width: 44px; height: 40px; text-align: center; vertical-align: middle; cursor: pointer; position: relative; }
 .cal-cell:hover { opacity: 0.85; }
 .cal-cell.available { background: #E8F5E9; }
 .cal-cell.rented    { background: #BBDEFB; }
@@ -114,7 +114,7 @@ thead .cal-vehicle-col { position: sticky; left: 0; top: 0; z-index: 3; backgrou
 .cal-cell.inspection { background: #E1BEE7; }
 .cal-cell.repair    { background: #FFCDD2; }
 .cal-cell.unknown   { background: #F5F5F5; }
-.cal-cell-text { font-size: 10px; line-height: 1.2; padding: 2px; }
+.cal-cell-text { font-size: 9px; line-height: 1.2; padding: 2px; display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 42px; color: #333; font-weight: bold; }
 .cal-legend { display: flex; gap: 12px; margin-bottom: 10px; flex-wrap: wrap; }
 .cal-legend-item { display: flex; align-items: center; gap: 4px; font-size: 12px; }
 .cal-legend-box { width: 16px; height: 16px; border-radius: 3px; }
