@@ -549,6 +549,24 @@ function hideTip() {
     document.getElementById('tooltip').style.display = 'none';
 }
 
+async function setupRichMenu() {
+    if (!confirm('LINEボットの画面下部に「入力フォームを開く」常駐ボタンを設定します。\nよろしいですか？')) return;
+    try {
+        const res = await fetch('/api/admin/setup-richmenu', {
+            method: 'POST',
+            headers: { 'X-Admin-Key': '3155' }
+        });
+        const data = await res.json();
+        if (data.ok) {
+            alert('✅ リッチメニューを設定しました！\n\nLINEでボット（吉岡商会bot）に「こんにちは」などと送ると、画面下部に緑のボタンが常時表示されます。\n\nグループチャットでも、ボットに話しかけることでボタンが現れます。');
+        } else {
+            alert('❌ 設定失敗: ' + (data.error || '不明なエラー'));
+        }
+    } catch(e) {
+        alert('❌ 通信エラー');
+    }
+}
+
 async function sendFormLinkToLine() {
     if (!confirm('LINEグループに入力フォームボタンを送信します。\n送信後、そのメッセージをピン留めしてください。')) return;
     try {

@@ -1,4 +1,4 @@
-import os, json, sqlite3, hashlib, hmac, re, requests, base64
+import os, json, sqlite3, hashlib, hmac, re, requests, base64, zlib, struct
 from datetime import datetime, date, timedelta, timezone
 from functools import wraps
 
@@ -710,7 +710,30 @@ def process_line_message(text, source_id='', user_name=''):
     # ── 解析不能 → None を返して未対応リストへ ──
     return None
 
-LIFF_URL = 'https://yoshioka-rental-1.onrender.com/liff'
+LIFF_URL   = 'https://yoshioka-rental-1.onrender.com/liff'
+LINE_API   = 'https://api.line.me/v2/bot'
+LINE_DATA  = 'https://api-data.line.me/v2/bot'
+
+def _make_richmenu_png():
+    """PIL不要・Pythonのみで2500x843のリッチメニュー用PNG生成"""
+    W, H = 2500, 843
+    BORDER = 90
+    # 行ごとのピクセルデータ（3バイト×W）
+    DARK  = b'\x1a\x3a\x5c' * W   # #1a3a5c ダークブルー（上下帯）
+    GREEN = b'\x4c\xaf\x50' * W   # #4caf50 グリーン（ボタン面）
+    # フィルターバイト(0x00) + ピクセル列
+    rows = [b'\x00' + (DARK if y < BORDER or y >= H - BORDER else GREEN)
+            for y in range(H)]
+    raw = b''.join(rows)
+
+    def _chunk(tag, data):
+        crc = zlib.crc32(tag + data) & 0xffffffff
+        return struct.pack('>I', len(data)) + tag + data + struct.pack('>I', crc)
+
+    ihdr = _chunk(b'IHDR', struct.pack('>IIBBBBB', W, H, 8, 2, 0, 0, 0))
+    idat = _chunk(b'IDAT', zlib.compress(raw, 6))
+    iend = _chunk(b'IEND', b'')
+    return b'\x89PNG\r\n\x1a\n' + ihdr + idat + iend
 
 QUICK_REPLY_FORM = {
     'items': [
@@ -1107,6 +1130,50 @@ def admin_send_form_link():
         json={'to': group_id, 'messages': [flex_msg]},
         timeout=5)
     return jsonify({'sent': True, 'note': 'このメッセージをLINEグループでピン留めしてください'})
+
+# ── LINEリッチメニュー設定（管理者専用） ─────────────────────
+@app.route('/api/admin/setup-richmenu', methods=['POST'])
+def admin_setup_richmenu():
+    key = request.headers.get('X-Admin-Key','') or request.args.get('key','')
+    if key != ADMIN_PASS:
+        return jsonify({'error': 'Unauthorized'}), 401
+    if not LINE_CHANNEL_TOKEN:
+        return jsonify({'error': 'LINE_CHANNEL_TOKEN未設定'}), 400
+
+    hdrs = {'Authorization': f'Bearer {LINE_CHANNEL_TOKEN}'}
+
+    # 1. リッチメニュー作成
+    menu_def = {
+        'size': {'width': 2500, 'height': 843},
+        'selected': True,
+        'name': '入力フォームメニュー',
+        'chatBarText': '📱 入力フォームを開く',
+        'areas': [{
+            'bounds': {'x': 0, 'y': 0, 'width': 2500, 'height': 843},
+            'action': {'type': 'uri', 'uri': LIFF_URL}
+        }]
+    }
+    r1 = requests.post(f'{LINE_API}/richmenu',
+                       headers={**hdrs, 'Content-Type': 'application/json'},
+                       json=menu_def, timeout=15)
+    if r1.status_code != 200:
+        return jsonify({'error': f'作成失敗: {r1.text}'}), 500
+    rich_menu_id = r1.json()['richMenuId']
+
+    # 2. 画像アップロード
+    png = _make_richmenu_png()
+    r2 = requests.post(f'{LINE_DATA}/richmenu/{rich_menu_id}/content',
+                       headers={**hdrs, 'Content-Type': 'image/png'},
+                       data=png, timeout=30)
+    if r2.status_code != 200:
+        return jsonify({'error': f'画像アップロード失敗: {r2.text}'}), 500
+
+    # 3. デフォルトリッチメニューに設定（全ユーザー対象）
+    requests.post(f'{LINE_API}/user/all/richmenu/{rich_menu_id}',
+                  headers=hdrs, timeout=10)
+
+    return jsonify({'ok': True, 'richMenuId': rich_menu_id,
+                    'note': 'LINEアプリでボットに話しかけると画面下部にボタンが表示されます'})
 
 # ── LIFF フォーム ────────────────────────────────────────────
 @app.route('/liff')
