@@ -526,8 +526,7 @@ def process_line_message(text, source_id='', user_name=''):
 
     # ── フォームURL送信 ──
     if text in ['フォーム', '登録', '登録フォーム', 'form']:
-        return ("📱 入力フォームはこちら👇\nhttps://yoshioka-rental-1.onrender.com/liff\n"
-                "タップして開いてください")
+        return '__FORM_BUTTON__'
 
     # ── 一覧・状況 ──
     if text in ['一覧', '状況', 'status']:
@@ -711,6 +710,22 @@ def process_line_message(text, source_id='', user_name=''):
     # ── 解析不能 → None を返して未対応リストへ ──
     return None
 
+LIFF_URL = 'https://yoshioka-rental-1.onrender.com/liff'
+
+QUICK_REPLY_FORM = {
+    'items': [
+        {
+            'type': 'action',
+            'imageUrl': 'https://scdn.line-apps.com/n/channel_devcenter/img/fx/01_1_cafe.png',
+            'action': {
+                'type': 'uri',
+                'label': '📱 入力フォーム',
+                'uri': LIFF_URL,
+            }
+        }
+    ]
+}
+
 def send_line_reply(reply_token, message):
     if not LINE_CHANNEL_TOKEN:
         return
@@ -719,7 +734,64 @@ def send_line_reply(reply_token, message):
         headers={'Authorization': f'Bearer {LINE_CHANNEL_TOKEN}',
                  'Content-Type': 'application/json'},
         json={'replyToken': reply_token,
-              'messages': [{'type': 'text', 'text': message}]},
+              'messages': [{'type': 'text', 'text': message,
+                            'quickReply': QUICK_REPLY_FORM}]},
+        timeout=5)
+
+def send_form_button(reply_token):
+    """入力フォームへのボタンメッセージを返信"""
+    if not LINE_CHANNEL_TOKEN:
+        return
+    flex_msg = {
+        'type': 'flex',
+        'altText': '📱 車両状態登録フォーム',
+        'contents': {
+            'type': 'bubble',
+            'size': 'kilo',
+            'header': {
+                'type': 'box',
+                'layout': 'vertical',
+                'contents': [
+                    {'type': 'text', 'text': '🚗 吉岡商会 車両管理',
+                     'weight': 'bold', 'color': '#ffffff', 'size': 'md'}
+                ],
+                'backgroundColor': '#1a3a5c',
+                'paddingAll': '14px',
+            },
+            'body': {
+                'type': 'box',
+                'layout': 'vertical',
+                'contents': [
+                    {'type': 'text', 'text': '車両の状態を登録・更新する',
+                     'size': 'sm', 'color': '#555555', 'margin': 'none'},
+                ],
+                'paddingAll': '14px',
+            },
+            'footer': {
+                'type': 'box',
+                'layout': 'vertical',
+                'contents': [
+                    {
+                        'type': 'button',
+                        'style': 'primary',
+                        'color': '#4CAF50',
+                        'action': {
+                            'type': 'uri',
+                            'label': '📱 入力フォームを開く',
+                            'uri': LIFF_URL,
+                        },
+                        'height': 'sm',
+                    }
+                ],
+                'paddingAll': '10px',
+            },
+        }
+    }
+    requests.post(
+        'https://api.line.me/v2/bot/message/reply',
+        headers={'Authorization': f'Bearer {LINE_CHANNEL_TOKEN}',
+                 'Content-Type': 'application/json'},
+        json={'replyToken': reply_token, 'messages': [flex_msg]},
         timeout=5)
 
 def send_line_push(to, message):
@@ -972,6 +1044,70 @@ def api_pending_remind():
     send_line_push(group_id, '\n'.join(lines))
     return jsonify({'sent': True, 'count': len(items)})
 
+# ── フォームリンクをグループへプッシュ（管理者専用） ───────────
+@app.route('/api/admin/send-form-link', methods=['POST'])
+def admin_send_form_link():
+    key = request.headers.get('X-Admin-Key','') or request.args.get('key','')
+    if key != ADMIN_PASS:
+        return jsonify({'error': 'Unauthorized'}), 401
+    group_id = get_setting('line_group_id')
+    if not group_id or not LINE_CHANNEL_TOKEN:
+        return jsonify({'error': 'グループIDまたはトークン未設定'}), 400
+    flex_msg = {
+        'type': 'flex',
+        'altText': '📱 車両状態登録フォーム',
+        'contents': {
+            'type': 'bubble',
+            'size': 'kilo',
+            'header': {
+                'type': 'box',
+                'layout': 'vertical',
+                'contents': [
+                    {'type': 'text', 'text': '🚗 吉岡商会 車両管理',
+                     'weight': 'bold', 'color': '#ffffff', 'size': 'md'}
+                ],
+                'backgroundColor': '#1a3a5c',
+                'paddingAll': '14px',
+            },
+            'body': {
+                'type': 'box',
+                'layout': 'vertical',
+                'contents': [
+                    {'type': 'text', 'text': '車両の状態を登録・更新する',
+                     'size': 'sm', 'color': '#555555'},
+                    {'type': 'text', 'text': '「フォーム」と送信しても開けます',
+                     'size': 'xs', 'color': '#aaaaaa', 'margin': 'sm'},
+                ],
+                'paddingAll': '14px',
+            },
+            'footer': {
+                'type': 'box',
+                'layout': 'vertical',
+                'contents': [
+                    {
+                        'type': 'button',
+                        'style': 'primary',
+                        'color': '#4CAF50',
+                        'action': {
+                            'type': 'uri',
+                            'label': '📱 入力フォームを開く',
+                            'uri': LIFF_URL,
+                        },
+                        'height': 'sm',
+                    }
+                ],
+                'paddingAll': '10px',
+            },
+        }
+    }
+    requests.post(
+        'https://api.line.me/v2/bot/message/push',
+        headers={'Authorization': f'Bearer {LINE_CHANNEL_TOKEN}',
+                 'Content-Type': 'application/json'},
+        json={'to': group_id, 'messages': [flex_msg]},
+        timeout=5)
+    return jsonify({'sent': True, 'note': 'このメッセージをLINEグループでピン留めしてください'})
+
 # ── LIFF フォーム ────────────────────────────────────────────
 @app.route('/liff')
 def liff_form():
@@ -1130,7 +1266,9 @@ def line_webhook():
             reply_token = event.get('replyToken', '')
             source_id   = (group_id + '_' + user_id) if group_id else user_id
             reply = process_line_message(text, source_id, user_id[:8])
-            if reply is not None:
+            if reply == '__FORM_BUTTON__':
+                send_form_button(reply_token)
+            elif reply is not None:
                 send_line_reply(reply_token, reply)
             # 解析できないメッセージは無視（グループの通常会話に干渉しない）
     return 'OK'

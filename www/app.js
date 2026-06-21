@@ -549,4 +549,22 @@ function hideTip() {
     document.getElementById('tooltip').style.display = 'none';
 }
 
+async function sendFormLinkToLine() {
+    if (!confirm('LINEグループに入力フォームボタンを送信します。\n送信後、そのメッセージをピン留めしてください。')) return;
+    try {
+        const res = await fetch('/api/admin/send-form-link', {
+            method: 'POST',
+            headers: { 'X-Admin-Key': '3155' }
+        });
+        const data = await res.json();
+        if (data.sent) {
+            alert('✅ LINEグループに送信しました！\nLINEを開いてメッセージをピン留めしてください。');
+        } else {
+            alert('❌ 送信失敗: ' + (data.error || '不明なエラー'));
+        }
+    } catch(e) {
+        alert('❌ 通信エラー');
+    }
+}
+
 init();
