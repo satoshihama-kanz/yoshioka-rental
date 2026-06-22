@@ -568,7 +568,7 @@ async function setupRichMenu() {
 }
 
 async function sendFormLinkToLine() {
-    if (!confirm('LINEグループに入力フォームボタンを送信します。\n送信後、そのメッセージをピン留めしてください。')) return;
+    if (!confirm('グループLINEにフォームボタンを送信します。\n送信後、そのメッセージを長押し→「ピン留め」すると\nグループ画面の上部に常時表示されます。')) return;
     try {
         const res = await fetch('/api/admin/send-form-link', {
             method: 'POST',
@@ -576,7 +576,7 @@ async function sendFormLinkToLine() {
         });
         const data = await res.json();
         if (data.sent) {
-            alert('✅ LINEグループに送信しました！\nLINEを開いてメッセージをピン留めしてください。');
+            alert('✅ LINEグループに送信しました！\n\n【次の手順】\n①LINEグループを開く\n②届いたメッセージを長押し\n③「ピン留め」を選択\n\nこれでグループ画面の上部にボタンが常時表示されます 📌');
         } else {
             alert('❌ 送信失敗: ' + (data.error || '不明なエラー'));
         }

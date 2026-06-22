@@ -1076,36 +1076,29 @@ def admin_send_form_link():
     group_id = get_setting('line_group_id')
     if not group_id or not LINE_CHANNEL_TOKEN:
         return jsonify({'error': 'グループIDまたはトークン未設定'}), 400
+    pin_text = '📌 このメッセージをピン留めしてください\n長押し → ピン留め → グループ画面上部に常時表示されます'
     flex_msg = {
         'type': 'flex',
         'altText': '📱 車両状態登録フォーム',
         'contents': {
             'type': 'bubble',
-            'size': 'kilo',
+            'size': 'mega',
             'header': {
                 'type': 'box',
                 'layout': 'vertical',
                 'contents': [
-                    {'type': 'text', 'text': '🚗 吉岡商会 車両管理',
-                     'weight': 'bold', 'color': '#ffffff', 'size': 'md'}
+                    {'type': 'text', 'text': '🚗 吉岡商会 車両管理システム',
+                     'weight': 'bold', 'color': '#ffffff', 'size': 'lg'},
+                    {'type': 'text', 'text': '車両の状態登録・更新はこちら',
+                     'color': '#bbddff', 'size': 'sm', 'margin': 'sm'},
                 ],
                 'backgroundColor': '#1a3a5c',
-                'paddingAll': '14px',
-            },
-            'body': {
-                'type': 'box',
-                'layout': 'vertical',
-                'contents': [
-                    {'type': 'text', 'text': '車両の状態を登録・更新する',
-                     'size': 'sm', 'color': '#555555'},
-                    {'type': 'text', 'text': '「フォーム」と送信しても開けます',
-                     'size': 'xs', 'color': '#aaaaaa', 'margin': 'sm'},
-                ],
-                'paddingAll': '14px',
+                'paddingAll': '16px',
             },
             'footer': {
                 'type': 'box',
                 'layout': 'vertical',
+                'spacing': 'sm',
                 'contents': [
                     {
                         'type': 'button',
@@ -1116,10 +1109,19 @@ def admin_send_form_link():
                             'label': '📱 入力フォームを開く',
                             'uri': LIFF_URL,
                         },
-                        'height': 'sm',
+                        'height': 'md',
+                    },
+                    {
+                        'type': 'text',
+                        'text': '※ このメッセージを長押し→ピン留めすると\n　 常にボタンが表示されます',
+                        'size': 'xs',
+                        'color': '#aaaaaa',
+                        'align': 'center',
+                        'wrap': True,
+                        'margin': 'sm',
                     }
                 ],
-                'paddingAll': '10px',
+                'paddingAll': '12px',
             },
         }
     }
@@ -1129,7 +1131,7 @@ def admin_send_form_link():
                  'Content-Type': 'application/json'},
         json={'to': group_id, 'messages': [flex_msg]},
         timeout=5)
-    return jsonify({'sent': True, 'note': 'このメッセージをLINEグループでピン留めしてください'})
+    return jsonify({'sent': True, 'note': 'LINEグループでメッセージを長押し→ピン留めしてください'})
 
 # ── LINEリッチメニュー設定（管理者専用） ─────────────────────
 @app.route('/api/admin/setup-richmenu', methods=['POST'])
