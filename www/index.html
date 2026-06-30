@@ -172,7 +172,7 @@
         <div class="form-row">
           <label>取引先/顧客名</label>
           <div style="position:relative;">
-            <input type="text" id="formClient" placeholder="ひらがな1文字で絞り込み" oninput="onClientInput(this.value)" autocomplete="off" style="width:100%;">
+            <input type="text" id="formClient" placeholder="ひらがな1文字で絞り込み" oninput="onClientInput(this.value)" oncompositionend="onClientInput(this.value)" autocomplete="off" style="width:100%;">
             <div id="clientSuggest" style="display:none;position:absolute;left:0;right:0;top:100%;background:white;border:1px solid #ccc;border-radius:0 0 6px 6px;max-height:180px;overflow-y:auto;z-index:1000;box-shadow:0 4px 12px rgba(0,0,0,0.15);"></div>
           </div>
         </div>
@@ -201,6 +201,6 @@
 
 <div id="tooltip" class="tooltip" style="display:none;"></div>
 
-<script src="app.js?v=20260630c"></script>
+<script src="app.js?v=20260630d"></script>
 </body>
 </html>
