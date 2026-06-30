@@ -242,7 +242,7 @@ function renderCalendar() {
     const dayNames = ['日','月','火','水','木','金','土'];
 
     let html = '<table class="calendar-table"><thead><tr>';
-    html += '<th class="cal-vehicle-col">車両</th>';
+    html += '<th class="cal-vehicle-col" style="font-size:9px;">カテゴリ／車両</th>';
     dates.forEach(d => {
         const ds = d.toISOString().slice(0,10);
         const isToday = ds === todayStr;
@@ -251,7 +251,7 @@ function renderCalendar() {
         if (isToday) cls += ' today';
         else if (dow === 0) cls += ' sunday';
         else if (dow === 6) cls += ' saturday';
-        html += `<th class="${cls}">${d.getMonth()+1}/${d.getDate()}<br><small>${dayNames[dow]}</small></th>`;
+        html += `<th class="${cls}" style="font-size:8px;padding:2px 1px;">${d.getMonth()+1}/${d.getDate()}<br>${dayNames[dow]}</th>`;
     });
     html += '</tr></thead><tbody>';
 
@@ -282,8 +282,9 @@ function renderCalendar() {
     sortedVehicles.forEach(v => {
         html += `<tr>`;
         html += `<td class="cal-vehicle-col" onclick="openDetail(${v.id})" style="cursor:pointer;">
-            <div class="cal-vehicle-num">${v.number}</div>
-            <div class="cal-vehicle-type">${v.car_type}</div>
+            ${v.car_category ? `<span class="cal-cat">${v.car_category}</span>` : ''}
+            <span class="cal-vehicle-num">${v.number}</span>
+            <span class="cal-vehicle-type">${v.car_type}</span>
         </td>`;
         dates.forEach(d => {
             const ds = d.toISOString().slice(0,10);
