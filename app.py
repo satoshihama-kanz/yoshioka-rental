@@ -162,7 +162,8 @@ def init_db():
             inspection_date TEXT,
             region TEXT DEFAULT '',
             studless INTEGER DEFAULT 0,
-            is_rental_other INTEGER DEFAULT 0
+            is_rental_other INTEGER DEFAULT 0,
+            car_category TEXT DEFAULT ''
         );
         CREATE TABLE IF NOT EXISTS events (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -200,6 +201,7 @@ def init_db():
         "ALTER TABLE vehicles ADD COLUMN region TEXT DEFAULT ''",
         "ALTER TABLE vehicles ADD COLUMN studless INTEGER DEFAULT 0",
         "ALTER TABLE vehicles ADD COLUMN is_rental_other INTEGER DEFAULT 0",
+        "ALTER TABLE vehicles ADD COLUMN car_category TEXT DEFAULT ''",
         "ALTER TABLE events ADD COLUMN location TEXT DEFAULT ''",
         "ALTER TABLE events ADD COLUMN washed INTEGER DEFAULT 0",
         "ALTER TABLE events ADD COLUMN interior_cleaned INTEGER DEFAULT 0",
@@ -1112,8 +1114,18 @@ def admin_send_form_link():
                         'height': 'md',
                     },
                     {
+                        'type': 'button',
+                        'style': 'secondary',
+                        'action': {
+                            'type': 'uri',
+                            'label': '📲 ホーム画面に追加する方法',
+                            'uri': 'https://yoshioka-rental-1.onrender.com/qr',
+                        },
+                        'height': 'sm',
+                    },
+                    {
                         'type': 'text',
-                        'text': '※ このメッセージを長押し→ピン留めすると\n　 常にボタンが表示されます',
+                        'text': 'ホーム画面に追加すると次回からLINEを開かずワンタップで使えます',
                         'size': 'xs',
                         'color': '#aaaaaa',
                         'align': 'center',
@@ -1176,6 +1188,82 @@ def admin_setup_richmenu():
 
     return jsonify({'ok': True, 'richMenuId': rich_menu_id,
                     'note': 'LINEアプリでボットに話しかけると画面下部にボタンが表示されます'})
+
+# ── QRコード・ホーム画面追加ガイドページ ─────────────────────
+QR_PAGE = '''<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>フォームをホーム画面に追加</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:'Meiryo',sans-serif;background:#f0f2f5;min-height:100vh;padding:20px}
+.card{background:white;border-radius:16px;padding:24px;max-width:420px;margin:0 auto;box-shadow:0 4px 20px rgba(0,0,0,0.12)}
+h1{font-size:18px;color:#1a3a5c;text-align:center;margin-bottom:6px}
+.sub{font-size:13px;color:#888;text-align:center;margin-bottom:20px}
+#qr{text-align:center;margin:16px 0}
+.btn{display:block;width:100%;padding:14px;background:#4CAF50;color:white;border:none;border-radius:10px;font-size:16px;font-weight:bold;text-align:center;text-decoration:none;margin-bottom:12px;cursor:pointer}
+.steps{background:#f8f9fa;border-radius:10px;padding:16px;margin-top:16px}
+.steps h2{font-size:13px;font-weight:bold;color:#1a3a5c;margin-bottom:10px}
+.step{display:flex;align-items:flex-start;gap:10px;margin-bottom:10px;font-size:13px;line-height:1.5}
+.step-num{background:#1a3a5c;color:white;border-radius:50%;width:22px;height:22px;min-width:22px;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:bold}
+.os-tabs{display:flex;gap:8px;margin-bottom:10px}
+.os-tab{flex:1;padding:6px;border:2px solid #ddd;border-radius:8px;text-align:center;font-size:13px;cursor:pointer;background:white}
+.os-tab.active{border-color:#1a3a5c;background:#1a3a5c;color:white}
+.os-steps{display:none}.os-steps.show{display:block}
+</style>
+</head>
+<body>
+<div class="card">
+  <h1>🚗 車両登録フォーム</h1>
+  <p class="sub">ホーム画面に追加すると次回からワンタップで開けます</p>
+
+  <div id="qr"></div>
+
+  <a class="btn" href="/liff">📱 今すぐフォームを開く</a>
+
+  <div class="steps">
+    <h2>📲 ホーム画面への追加方法</h2>
+    <div class="os-tabs">
+      <div class="os-tab active" onclick="showOS('ios')">iPhone</div>
+      <div class="os-tab" onclick="showOS('android')">Android</div>
+    </div>
+    <div class="os-steps show" id="ios-steps">
+      <div class="step"><div class="step-num">1</div><div>「今すぐフォームを開く」をタップ</div></div>
+      <div class="step"><div class="step-num">2</div><div>画面下部の <strong>共有ボタン（□↑）</strong> をタップ</div></div>
+      <div class="step"><div class="step-num">3</div><div><strong>「ホーム画面に追加」</strong> を選択</div></div>
+      <div class="step"><div class="step-num">4</div><div>名前を「車両登録」などにして <strong>「追加」</strong></div></div>
+    </div>
+    <div class="os-steps" id="android-steps">
+      <div class="step"><div class="step-num">1</div><div>「今すぐフォームを開く」をタップ</div></div>
+      <div class="step"><div class="step-num">2</div><div>右上の <strong>メニュー（⋮）</strong> をタップ</div></div>
+      <div class="step"><div class="step-num">3</div><div><strong>「ホーム画面に追加」</strong> を選択</div></div>
+      <div class="step"><div class="step-num">4</div><div>名前を確認して <strong>「追加」</strong></div></div>
+    </div>
+  </div>
+</div>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+<script>
+new QRCode(document.getElementById('qr'), {
+  text: window.location.origin + '/liff',
+  width: 180, height: 180,
+  colorDark: '#1a3a5c', colorLight: '#ffffff',
+  correctLevel: QRCode.CorrectLevel.M
+});
+function showOS(os) {
+  document.querySelectorAll('.os-tab').forEach(t => t.classList.remove('active'));
+  document.querySelectorAll('.os-steps').forEach(s => s.classList.remove('show'));
+  event.target.classList.add('active');
+  document.getElementById(os + '-steps').classList.add('show');
+}
+</script>
+</body>
+</html>'''
+
+@app.route('/qr')
+def qr_page():
+    return QR_PAGE
 
 # ── LIFF フォーム ────────────────────────────────────────────
 @app.route('/liff')
@@ -1282,6 +1370,28 @@ def admin_add_vehicles():
     conn.commit()
     conn.close()
     return jsonify({'added': added, 'skipped': skipped})
+
+# ── 車両メタデータ一括更新（管理者専用） ────────────────────
+@app.route('/api/admin/update-vehicle-meta', methods=['POST'])
+def admin_update_vehicle_meta():
+    key = request.headers.get('X-Admin-Key', '')
+    if key != ADMIN_PASS:
+        return jsonify({'error': 'Unauthorized'}), 401
+    items = request.get_json() or []
+    conn = get_db()
+    c = conn.cursor()
+    updated, not_found = 0, []
+    for item in items:
+        row = c.execute('SELECT id FROM vehicles WHERE number=?', (item['number'],)).fetchone()
+        if not row:
+            not_found.append(item['number'])
+            continue
+        c.execute('UPDATE vehicles SET car_category=?, inspection_date=? WHERE number=?',
+                  (item.get('car_category',''), item.get('inspection_date',''), item['number']))
+        updated += 1
+    conn.commit()
+    conn.close()
+    return jsonify({'updated': updated, 'not_found_count': len(not_found), 'not_found': not_found[:20]})
 
 # ── 稼働実績一括インポート（管理者専用） ────────────────────
 @app.route('/api/admin/import-status', methods=['POST'])

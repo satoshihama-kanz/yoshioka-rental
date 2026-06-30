@@ -15,9 +15,9 @@
   </div>
   <div class="header-right">
     <span class="total-badge" id="totalBadge">全 0 台</span>
-    <button class="btn btn-success" onclick="openAddModal()">＋ 状態を登録</button>
-    <button class="btn" style="background:#25D366;color:white;" onclick="sendFormLinkToLine()" title="グループLINEにフォームボタンを送信 → 長押しでピン留めすると常時表示">📌 グループにピン留め</button>
-    <button class="btn" style="background:#FF9800;color:white;" onclick="setupRichMenu()" title="LINEリッチメニュー（常駐ボタン）を設定">⚙️ LINE常駐ボタン設定</button>
+    <button class="btn btn-success btn-hdr" onclick="openAddModal()">＋ 登録</button>
+    <button class="btn btn-hdr" style="background:#25D366;color:white;" onclick="sendFormLinkToLine()" title="グループLINEにフォームボタンを送信">📌 LINE</button>
+    <button class="btn btn-hdr" style="background:#FF9800;color:white;" onclick="setupRichMenu()" title="LINEリッチメニュー設定">⚙️</button>
   </div>
 </header>
 
@@ -70,6 +70,7 @@
         <option value="number">🔢 車番順</option>
         <option value="status">📊 稼働状況別</option>
         <option value="type">🚗 車種別</option>
+        <option value="stock">🟢 在庫のみ</option>
       </select>
     </div>
   </div>

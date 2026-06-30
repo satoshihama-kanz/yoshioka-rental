@@ -144,6 +144,27 @@ function showPage(name) {
     renderCurrentPage();
 }
 
+// 車検警告（2ヶ月以内なら警告）
+function inspectionWarning(dateStr) {
+    if (!dateStr) return '';
+    const insp = new Date(dateStr);
+    const now  = new Date();
+    const diff = (insp - now) / (1000 * 60 * 60 * 24); // 残り日数
+    const m = insp.getMonth() + 1, d = insp.getDate();
+    if (diff < 0)   return `<span class="insp-warn">⚠️ 車検切れ ${m}/${d}</span>`;
+    if (diff <= 60) return `<span class="insp-warn">⚠️ 車検 ${m}/${d}</span>`;
+    return '';
+}
+
+// 直近イベントの状態アイコン（洗車・清掃・スタッドレス）
+function statusIcons(ev, v) {
+    let icons = '';
+    if (v.studless)  icons += '❄️';
+    if (ev && ev.washed)           icons += '🚿';
+    if (ev && ev.interior_cleaned) icons += '✨';
+    return icons;
+}
+
 // ====== ダッシュボード ======
 function renderDashboard() {
     const statusCounts = { 在庫: 0, 貸出中: 0, 予約済: 0, 車検中: 0, 点検中: 0, 修理中: 0 };
@@ -155,62 +176,49 @@ function renderDashboard() {
 
     const cards = document.getElementById('summaryCards');
     cards.innerHTML = `
-        <div class="card available" style="cursor:pointer" onclick="filterByStatus('')" title="クリックで全表示">
-          <div class="card-num">${statusCounts['在庫']}</div><div class="card-label">在庫（空き）</div></div>
-        <div class="card rented" style="cursor:pointer" onclick="filterByStatus('貸出中')" title="クリックで貸出中を表示">
+        <div class="card available" style="cursor:pointer" onclick="filterByStatus('')">
+          <div class="card-num">${statusCounts['在庫']}</div><div class="card-label">在庫</div></div>
+        <div class="card rented" style="cursor:pointer" onclick="filterByStatus('貸出中')">
           <div class="card-num">${statusCounts['貸出中']}</div><div class="card-label">貸出中</div></div>
-        <div class="card reserved" style="cursor:pointer" onclick="filterByStatus('予約済')" title="クリックで予約済を表示">
+        <div class="card reserved" style="cursor:pointer" onclick="filterByStatus('予約済')">
           <div class="card-num">${statusCounts['予約済']}</div><div class="card-label">予約済</div></div>
-        <div class="card inspection" style="cursor:pointer" onclick="filterByStatus('車検中')" title="クリックで車検・点検中を表示">
-          <div class="card-num">${statusCounts['車検中'] + statusCounts['点検中']}</div><div class="card-label">車検・点検中</div></div>
-        <div class="card repair" style="cursor:pointer" onclick="filterByStatus('修理中')" title="クリックで修理中を表示">
+        <div class="card inspection" style="cursor:pointer" onclick="filterByStatus('車検中')">
+          <div class="card-num">${statusCounts['車検中'] + statusCounts['点検中']}</div><div class="card-label">車検・点検</div></div>
+        <div class="card repair" style="cursor:pointer" onclick="filterByStatus('修理中')">
           <div class="card-num">${statusCounts['修理中']}</div><div class="card-label">修理中</div></div>
     `;
 
     const grid = document.getElementById('vehicleGrid');
     if (filteredVehicles.length === 0) { grid.innerHTML = '<div class="loading">該当する車両がありません</div>'; return; }
 
-    grid.innerHTML = filteredVehicles.map(v => {
+    const statusColor = { '在庫':'#4CAF50','貸出中':'#2196F3','予約済':'#FF9800','車検中':'#9C27B0','点検中':'#795548','修理中':'#f44336' };
+
+    let html = `<table class="vlist-table">
+    <thead><tr>
+      <th>車番</th><th>車種</th><th>状態</th><th>担当/顧客</th><th>返却日</th><th>アイコン</th><th>車検</th>
+    </tr></thead><tbody>`;
+
+    filteredVehicles.forEach(v => {
         const { status, event: ev } = getVehicleCurrentStatus(v.id);
-        const badge = `<span class="status-badge badge-${status}">${status}</span>`;
-
-        let infoLines = '';
-        if (ev) {
-            // 担当者
-            if (ev.staff) infoLines += `<div class="vc-info-row"><span class="vc-info-label">担当</span><span class="vc-info-val">${ev.staff}</span></div>`;
-            // 取引先
-            if (ev.client) infoLines += `<div class="vc-info-row"><span class="vc-info-label">先</span><span class="vc-info-val vc-client-text">${ev.client}</span></div>`;
-            // 適用区分
-            if (ev.category) infoLines += `<div class="vc-info-row"><span class="vc-info-label">区分</span><span class="vc-info-val vc-cat-${ev.category}">${ev.category}</span></div>`;
-            // 期間
-            const sDate = ev.start_date ? fmtDate(ev.start_date) : '';
-            const eDate = ev.end_date ? fmtDate(ev.end_date) : '未定';
-            if (sDate) infoLines += `<div class="vc-info-row"><span class="vc-info-label">期間</span><span class="vc-info-val">${sDate}〜${ev.end_date ? eDate : ''}</span></div>`;
-            // 備考
-            if (ev.notes) infoLines += `<div class="vc-notes">${ev.notes}</div>`;
-        }
-
-        // 次の予定
-        const todayStr = today();
-        const future = events.filter(e => String(e.vehicle_id) === String(v.id) && (e.start_date || '') > todayStr)
-            .sort((a,b) => (a.start_date||'').localeCompare(b.start_date||''));
-        let nextLine = '';
-        if (future.length > 0) {
-            const n = future[0];
-            const label = n.client ? `${n.client}` : n.notes ? n.notes : n.status;
-            nextLine = `<div class="vc-next">▶ ${fmtDate(n.start_date)} <span class="vc-next-label">${n.status}</span> ${n.staff ? n.staff+' ' : ''}${label}</div>`;
-        }
-
-        return `<div class="vehicle-card status-${status}" onclick="openDetail(${v.id})">
-            <div class="vc-header">
-                <span class="vc-number">${v.number}</span>
-                ${badge}
-            </div>
-            <div class="vc-type">${v.car_type}</div>
-            <div class="vc-info">${infoLines}</div>
-            ${nextLine}
-        </div>`;
-    }).join('');
+        const color  = statusColor[status] || '#4CAF50';
+        const badge  = `<span style="background:${color};color:white;padding:2px 6px;border-radius:10px;font-size:11px;font-weight:bold;">${status}</span>`;
+        const client = ev ? [ev.staff, ev.client].filter(Boolean).join(' / ') : '';
+        const endDt  = ev && ev.end_date ? fmtDate(ev.end_date) : '';
+        const icons  = statusIcons(ev, v);
+        const insp   = inspectionWarning(v.inspection_date);
+        const cat    = v.car_category ? `<span class="vlist-cat">${v.car_category}</span>` : '';
+        html += `<tr onclick="openDetail(${v.id})">
+          <td class="vlist-num">${v.number}</td>
+          <td><span class="vlist-type">${v.car_type}</span> ${cat}</td>
+          <td>${badge}</td>
+          <td class="vlist-client">${client}</td>
+          <td style="font-size:12px;color:#888;">${endDt}</td>
+          <td class="vlist-icons">${icons}</td>
+          <td class="vlist-insp">${insp}</td>
+        </tr>`;
+    });
+    html += '</tbody></table>';
+    grid.innerHTML = html;
 }
 
 // ====== カレンダー ======
@@ -248,10 +256,17 @@ function renderCalendar() {
     });
     html += '</tr></thead><tbody>';
 
-    // 並び替え
+    // 並び替え / 在庫フィルター
     const sortKey = (document.getElementById('calendarSort') || {value:'number'}).value;
     const statusOrder = {'貸出中':0,'予約済':1,'車検中':2,'点検中':3,'修理中':4,'在庫':5,'':6};
-    const sortedVehicles = [...filteredVehicles].sort((a, b) => {
+
+    let baseVehicles = filteredVehicles;
+    if (sortKey === 'stock') {
+        // 在庫のみ表示
+        baseVehicles = filteredVehicles.filter(v => getVehicleStatusOnDate(v.id, todayStr).status === '在庫');
+    }
+
+    const sortedVehicles = [...baseVehicles].sort((a, b) => {
         if (sortKey === 'status') {
             const sa = getVehicleStatusOnDate(a.id, todayStr).status;
             const sb = getVehicleStatusOnDate(b.id, todayStr).status;
