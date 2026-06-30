@@ -380,6 +380,66 @@ function renderStockTable(todayStr) {
     document.getElementById('calendarView').className = 'calendar-container';
 }
 
+// ====== 取引先マスタ ======
+const CLIENT_LIST = [
+    {name:'ネッツトヨタ京都',        yomi:'ねっつとよたきょうと'},
+    {name:'ネッツトヨタ滋賀',        yomi:'ねっつとよたしが'},
+    {name:'トヨタカローラ京滋',      yomi:'とよたかろーらけいじ'},
+    {name:'ダイハツ滋賀販売',        yomi:'だいはつしがはんばい'},
+    {name:'ホンダカーズ近畿',        yomi:'ほんだかーずきんき'},
+    {name:'日産プリンス京都',        yomi:'にっさんぷりんすきょうと'},
+    {name:'マツダオートザム',        yomi:'まつだおーとざむ'},
+    {name:'スズキ自販近畿',          yomi:'すずきじはんきんき'},
+    {name:'三菱自動車京都',          yomi:'みつびしじどうしゃきょうと'},
+    {name:'ガリバー京都店',          yomi:'がりばーきょうとてん'},
+    {name:'ガリバー大津店',          yomi:'がりばーおおつてん'},
+    {name:'オートバックス草津店',    yomi:'おーとばっくすくさつてん'},
+    {name:'イエローハット大津店',    yomi:'いえろーはっとおおつてん'},
+    {name:'コバック草津店',          yomi:'こばっくくさつてん'},
+    {name:'カーコンビニ倶楽部',      yomi:'かーこんびにくらぶ'},
+    {name:'東京海上日動',            yomi:'とうきょうかいじょうにちどう'},
+    {name:'三井住友海上',            yomi:'みついすみともかいじょう'},
+    {name:'損保ジャパン',            yomi:'そんぽじゃぱん'},
+    {name:'あいおいニッセイ同和',    yomi:'あいおいにっせいどうわ'},
+    {name:'JA共済',                  yomi:'じぇーえーきょうさい'},
+    {name:'富士火災海上',            yomi:'ふじかさいかいじょう'},
+    {name:'アクサダイレクト',        yomi:'あくさだいれくと'},
+    {name:'チューリッヒ保険',        yomi:'ちゅーりっひほけん'},
+    {name:'セコム損保',              yomi:'せこむそんぽ'},
+    {name:'ソニー損保',              yomi:'そにーそんぽ'},
+    {name:'佐川急便',                yomi:'さがわきゅうびん'},
+    {name:'ヤマト運輸',              yomi:'やまとうんゆ'},
+    {name:'西濃運輸',                yomi:'せいのううんゆ'},
+    {name:'福山通運',                yomi:'ふくやまつううん'},
+    {name:'近畿日本ツーリスト',      yomi:'きんきにほんつーりすと'},
+];
+
+function onClientInput(val) {
+    const box = document.getElementById('clientSuggest');
+    if (!val) { box.style.display = 'none'; return; }
+    const filtered = CLIENT_LIST.filter(c =>
+        c.yomi.startsWith(val) || c.name.includes(val)
+    );
+    if (filtered.length === 0) { box.style.display = 'none'; return; }
+    box.innerHTML = filtered.map(c =>
+        `<div onclick="selectClient('${c.name}')" style="padding:8px 12px;cursor:pointer;font-size:13px;border-bottom:1px solid #f0f0f0;"
+              onmouseover="this.style.background='#e8f4ff'" onmouseout="this.style.background=''">${c.name}</div>`
+    ).join('');
+    box.style.display = 'block';
+}
+
+function selectClient(name) {
+    document.getElementById('formClient').value = name;
+    document.getElementById('clientSuggest').style.display = 'none';
+}
+
+document.addEventListener('click', e => {
+    if (!e.target.closest('#formClient') && !e.target.closest('#clientSuggest')) {
+        const box = document.getElementById('clientSuggest');
+        if (box) box.style.display = 'none';
+    }
+});
+
 // ====== 未処理メッセージ ======
 async function renderPending() {
     const el = document.getElementById('pendingList');
