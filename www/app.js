@@ -149,10 +149,9 @@ function inspectionWarning(dateStr) {
     if (!dateStr) return '';
     const insp = new Date(dateStr);
     const now  = new Date();
-    const diff = (insp - now) / (1000 * 60 * 60 * 24); // 残り日数
+    const diff = (insp - now) / (1000 * 60 * 60 * 24);
     const m = insp.getMonth() + 1, d = insp.getDate();
-    if (diff < 0)   return `<span class="insp-warn">⚠️ 車検切れ ${m}/${d}</span>`;
-    if (diff <= 60) return `<span class="insp-warn">⚠️ 車検 ${m}/${d}</span>`;
+    if (diff <= 60) return `<span class="insp-warn">${m}/${d}</span>`;
     return '';
 }
 
@@ -349,18 +348,18 @@ function renderStockTable(todayStr) {
         // 車検警告
         const inspHtml = inspectionWarning(v.inspection_date);
 
-        const statusCell = `<span style="background:#4CAF50;color:white;padding:2px 8px;border-radius:10px;font-size:11px;font-weight:bold;">在庫</span>
-            ${icons ? `<span style="margin-left:4px;">${icons}</span>` : ''}
-            ${inspHtml ? `<div style="margin-top:3px;">${inspHtml}</div>` : ''}`;
+        const statusCell = `<span style="background:#4CAF50;color:white;padding:1px 5px;border-radius:8px;font-size:10px;font-weight:bold;">在庫</span>
+            ${icons ? `<span style="margin-left:2px;font-size:10px;">${icons}</span>` : ''}
+            ${inspHtml ? `<span style="margin-left:3px;">${inspHtml}</span>` : ''}`;
 
         // 次の予約・貸出予定
         const nextEv = events
             .filter(e => String(e.vehicle_id) === String(v.id) && (e.start_date || '') > todayStr)
             .sort((a, b) => (a.start_date || '').localeCompare(b.start_date || ''))[0] || null;
         const nextCell = nextEv
-            ? `<span style="color:#FF9800;font-size:12px;">▶ ${fmtDate(nextEv.start_date)} ${nextEv.status}</span>
-               ${nextEv.client ? `<br><span style="font-size:11px;color:#888;">${nextEv.client}</span>` : ''}`
-            : '<span style="color:#ccc;font-size:12px;">予定なし</span>';
+            ? `<span style="color:#FF9800;font-size:10px;">▶${fmtDate(nextEv.start_date)} ${nextEv.status}</span>
+               ${nextEv.client ? `<br><span style="font-size:9px;color:#888;">${nextEv.client}</span>` : ''}`
+            : '<span style="color:#ccc;font-size:10px;">—</span>';
 
         html += `<tr onclick="openDetail(${v.id})" style="cursor:pointer;">
           <td><span class="vlist-cat" style="font-size:12px;">${v.car_category || '—'}</span></td>

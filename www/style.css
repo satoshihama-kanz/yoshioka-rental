@@ -179,18 +179,18 @@ thead .cal-vehicle-col { position: sticky; left: 0; top: 0; z-index: 3; backgrou
 }
 
 /* 車両一覧テーブル（1行1台） */
-.vlist-table { width:100%; border-collapse:collapse; font-size:13px; background:white; border-radius:8px; overflow:hidden; box-shadow:0 1px 4px rgba(0,0,0,0.1); }
+.vlist-table { width:100%; border-collapse:collapse; font-size:11px; background:white; border-radius:8px; overflow:hidden; box-shadow:0 1px 4px rgba(0,0,0,0.1); }
 .vlist-table thead tr { background:#1a3a5c; color:white; }
-.vlist-table th { padding:8px 6px; text-align:left; font-size:12px; white-space:nowrap; }
-.vlist-table td { padding:7px 6px; border-bottom:1px solid #f0f0f0; vertical-align:middle; }
+.vlist-table th { padding:5px 4px; text-align:left; font-size:10px; white-space:nowrap; }
+.vlist-table td { padding:5px 4px; border-bottom:1px solid #f0f0f0; vertical-align:middle; }
 .vlist-table tr:hover { background:#f5f8ff; cursor:pointer; }
-.vlist-num { font-weight:bold; font-size:14px; color:#1a3a5c; white-space:nowrap; }
-.vlist-type { font-size:12px; color:#555; white-space:nowrap; }
-.vlist-cat { font-size:10px; color:#888; background:#f0f0f0; border-radius:3px; padding:1px 4px; white-space:nowrap; }
-.vlist-client { font-size:12px; color:#333; max-width:110px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
-.vlist-icons { white-space:nowrap; font-size:13px; letter-spacing:1px; }
-.vlist-insp { font-size:11px; white-space:nowrap; }
-.insp-warn { color:#E53935; font-weight:bold; }
+.vlist-num { font-weight:bold; font-size:12px; color:#1a3a5c; white-space:nowrap; }
+.vlist-type { font-size:10px; color:#555; white-space:nowrap; }
+.vlist-cat { font-size:9px; color:#888; background:#f0f0f0; border-radius:3px; padding:1px 3px; white-space:nowrap; }
+.vlist-client { font-size:11px; color:#333; max-width:100px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.vlist-icons { white-space:nowrap; font-size:11px; letter-spacing:0px; }
+.vlist-insp { font-size:10px; white-space:nowrap; }
+.insp-warn { color:#E53935; font-weight:bold; font-size:9px; }
 .insp-ok   { color:#aaa; }
 
 /* 日付 */
