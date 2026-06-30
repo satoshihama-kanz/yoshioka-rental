@@ -877,6 +877,32 @@ def api_events_get():
     conn.close()
     return jsonify(rows)
 
+def _event_summary_line(d, conn):
+    """イベントのサマリ文字列を生成してグループLINEに送信"""
+    v = conn.execute('SELECT number, car_type FROM vehicles WHERE id=?', (d['vehicle_id'],)).fetchone()
+    num      = v['number'] if v else str(d['vehicle_id'])
+    car_type = v['car_type'] if v else ''
+    status   = d.get('status', '')
+    staff    = d.get('staff', '')
+    client   = d.get('client', '')
+    category = d.get('category', '')
+    start_d  = (d.get('start_date') or '')
+    end_d    = (d.get('end_date') or '')
+    # 日付を M/D 形式に変換
+    def fmt(ds):
+        if not ds: return ''
+        try:
+            dt = datetime.strptime(ds, '%Y-%m-%d')
+            return f"{dt.month}/{dt.day}"
+        except:
+            return ds
+    period = fmt(start_d) + '〜' + (fmt(end_d) if end_d else '')
+    parts = [p for p in [num, car_type, status, staff, client, period, category] if p]
+    msg = '📋 ' + '、'.join(parts)
+    group_id = get_setting('line_group_id')
+    if group_id and LINE_CHANNEL_TOKEN:
+        send_line_push(group_id, msg)
+
 @app.route('/api/events', methods=['POST'])
 @login_required
 def api_events_post():
@@ -889,12 +915,8 @@ def api_events_post():
          d.get('staff',''), d.get('client',''), d.get('category',''), d.get('notes',''), now))
     conn.commit()
     row = dict(conn.execute('SELECT * FROM events WHERE id=?', (cur.lastrowid,)).fetchone())
+    _event_summary_line(d, conn)
     conn.close()
-    send_line_notify(
-        f"\n[車両管理] イベント登録\n"
-        f"車番: {d.get('vehicle_id')}　状態: {d['status']}\n"
-        f"担当: {d.get('staff','')}　顧客: {d.get('client','')}\n"
-        f"期間: {d.get('start_date','')}〜{d.get('end_date','')}")
     return jsonify(row)
 
 @app.route('/api/events/<int:eid>', methods=['PUT'])
@@ -908,6 +930,7 @@ def api_events_put(eid):
          d.get('staff',''), d.get('client',''), d.get('category',''), d.get('notes',''), eid))
     conn.commit()
     row = conn.execute('SELECT * FROM events WHERE id=?', (eid,)).fetchone()
+    _event_summary_line(d, conn)
     conn.close()
     return jsonify(dict(row) if row else {})
 
