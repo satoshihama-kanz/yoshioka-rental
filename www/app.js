@@ -260,13 +260,13 @@ function renderCalendar() {
     const sortKey = (document.getElementById('calendarSort') || {value:'number'}).value;
     const statusOrder = {'貸出中':0,'予約済':1,'車検中':2,'点検中':3,'修理中':4,'在庫':5,'':6};
 
-    let baseVehicles = filteredVehicles;
+    // 在庫のみ → テーブル表示に切り替え
     if (sortKey === 'stock') {
-        // 在庫のみ表示
-        baseVehicles = filteredVehicles.filter(v => getVehicleStatusOnDate(v.id, todayStr).status === '在庫');
+        renderStockTable(todayStr);
+        return;
     }
 
-    const sortedVehicles = [...baseVehicles].sort((a, b) => {
+    const sortedVehicles = [...filteredVehicles].sort((a, b) => {
         if (sortKey === 'status') {
             const sa = getVehicleStatusOnDate(a.id, todayStr).status;
             const sb = getVehicleStatusOnDate(b.id, todayStr).status;
@@ -305,6 +305,76 @@ function renderCalendar() {
         html += '</tr>';
     });
     html += '</tbody></table>';
+
+    document.getElementById('calendarView').innerHTML = html;
+    document.getElementById('calendarView').className = 'calendar-container';
+}
+
+// ====== 在庫テーブル（在庫のみ選択時） ======
+function renderStockTable(todayStr) {
+    const stockVehicles = filteredVehicles
+        .filter(v => getVehicleStatusOnDate(v.id, todayStr).status === '在庫')
+        .sort((a, b) => {
+            const ca = a.car_category || '';
+            const cb = b.car_category || '';
+            return ca !== cb ? ca.localeCompare(cb) : a.number.localeCompare(b.number);
+        });
+
+    if (stockVehicles.length === 0) {
+        document.getElementById('calendarView').innerHTML =
+            '<div class="loading">在庫車両はありません</div>';
+        return;
+    }
+
+    let html = `<table class="vlist-table">
+    <thead><tr>
+      <th>車種カテゴリ</th>
+      <th>車番・車種</th>
+      <th>ステータス</th>
+      <th>次の予定日</th>
+    </tr></thead><tbody>`;
+
+    stockVehicles.forEach(v => {
+        // 最新イベント（直近に終わったもの）から洗車・清掃・スタッドレスを取得
+        const latestEv = events
+            .filter(e => String(e.vehicle_id) === String(v.id))
+            .sort((a, b) => (b.start_date || '').localeCompare(a.start_date || ''))[0] || null;
+
+        // アイコン
+        let icons = '';
+        if (v.studless || (latestEv && latestEv.studless))    icons += '<span title="スタッドレス">❄️</span>';
+        if (latestEv && latestEv.washed)            icons += '<span title="洗車済み">🚿</span>';
+        if (latestEv && latestEv.interior_cleaned)  icons += '<span title="室内清掃済み">✨</span>';
+
+        // 車検警告
+        const inspHtml = inspectionWarning(v.inspection_date);
+
+        const statusCell = `<span style="background:#4CAF50;color:white;padding:2px 8px;border-radius:10px;font-size:11px;font-weight:bold;">在庫</span>
+            ${icons ? `<span style="margin-left:4px;">${icons}</span>` : ''}
+            ${inspHtml ? `<div style="margin-top:3px;">${inspHtml}</div>` : ''}`;
+
+        // 次の予約・貸出予定
+        const nextEv = events
+            .filter(e => String(e.vehicle_id) === String(v.id) && (e.start_date || '') > todayStr)
+            .sort((a, b) => (a.start_date || '').localeCompare(b.start_date || ''))[0] || null;
+        const nextCell = nextEv
+            ? `<span style="color:#FF9800;font-size:12px;">▶ ${fmtDate(nextEv.start_date)} ${nextEv.status}</span>
+               ${nextEv.client ? `<br><span style="font-size:11px;color:#888;">${nextEv.client}</span>` : ''}`
+            : '<span style="color:#ccc;font-size:12px;">予定なし</span>';
+
+        html += `<tr onclick="openDetail(${v.id})" style="cursor:pointer;">
+          <td><span class="vlist-cat" style="font-size:12px;">${v.car_category || '—'}</span></td>
+          <td>
+            <span class="vlist-num">${v.number}</span>
+            <span class="vlist-type" style="margin-left:4px;">${v.car_type}</span>
+          </td>
+          <td>${statusCell}</td>
+          <td>${nextCell}</td>
+        </tr>`;
+    });
+
+    html += `</tbody></table>
+    <div style="text-align:right;font-size:12px;color:#888;margin-top:6px;">在庫 ${stockVehicles.length}台</div>`;
 
     document.getElementById('calendarView').innerHTML = html;
     document.getElementById('calendarView').className = 'calendar-container';
