@@ -381,49 +381,65 @@ function renderStockTable(todayStr) {
 }
 
 // ====== 取引先マスタ ======
+// yomi: ひらがな読み, romaji: ローマ字略称（アルファベット社名用）
 const CLIENT_LIST = [
-    {name:'ネッツトヨタ京都',        yomi:'ねっつとよたきょうと'},
-    {name:'ネッツトヨタ滋賀',        yomi:'ねっつとよたしが'},
-    {name:'トヨタカローラ京滋',      yomi:'とよたかろーらけいじ'},
-    {name:'ダイハツ滋賀販売',        yomi:'だいはつしがはんばい'},
-    {name:'ホンダカーズ近畿',        yomi:'ほんだかーずきんき'},
-    {name:'日産プリンス京都',        yomi:'にっさんぷりんすきょうと'},
-    {name:'マツダオートザム',        yomi:'まつだおーとざむ'},
-    {name:'スズキ自販近畿',          yomi:'すずきじはんきんき'},
-    {name:'三菱自動車京都',          yomi:'みつびしじどうしゃきょうと'},
+    {name:'あいおいニッセイ同和',    yomi:'あいおいにっせいどうわ'},
+    {name:'アクサダイレクト',        yomi:'あくさだいれくと',        romaji:'axa'},
+    {name:'イエローハット大津店',    yomi:'いえろーはっとおおつてん'},
+    {name:'オートバックス草津店',    yomi:'おーとばっくすくさつてん'},
     {name:'ガリバー京都店',          yomi:'がりばーきょうとてん'},
     {name:'ガリバー大津店',          yomi:'がりばーおおつてん'},
-    {name:'オートバックス草津店',    yomi:'おーとばっくすくさつてん'},
-    {name:'イエローハット大津店',    yomi:'いえろーはっとおおつてん'},
-    {name:'コバック草津店',          yomi:'こばっくくさつてん'},
     {name:'カーコンビニ倶楽部',      yomi:'かーこんびにくらぶ'},
-    {name:'東京海上日動',            yomi:'とうきょうかいじょうにちどう'},
-    {name:'三井住友海上',            yomi:'みついすみともかいじょう'},
+    {name:'コバック草津店',          yomi:'こばっくくさつてん'},
+    {name:'佐川急便',                yomi:'さがわきゅうびん',        romaji:'sagawa'},
+    {name:'セコム損保',              yomi:'せこむそんぽ',            romaji:'secom'},
+    {name:'ソニー損保',              yomi:'そにーそんぽ',            romaji:'sony'},
     {name:'損保ジャパン',            yomi:'そんぽじゃぱん'},
-    {name:'あいおいニッセイ同和',    yomi:'あいおいにっせいどうわ'},
-    {name:'JA共済',                  yomi:'じぇーえーきょうさい'},
-    {name:'富士火災海上',            yomi:'ふじかさいかいじょう'},
-    {name:'アクサダイレクト',        yomi:'あくさだいれくと'},
     {name:'チューリッヒ保険',        yomi:'ちゅーりっひほけん'},
-    {name:'セコム損保',              yomi:'せこむそんぽ'},
-    {name:'ソニー損保',              yomi:'そにーそんぽ'},
-    {name:'佐川急便',                yomi:'さがわきゅうびん'},
-    {name:'ヤマト運輸',              yomi:'やまとうんゆ'},
-    {name:'西濃運輸',                yomi:'せいのううんゆ'},
-    {name:'福山通運',                yomi:'ふくやまつううん'},
+    {name:'東京海上日動',            yomi:'とうきょうかいじょうにちどう'},
+    {name:'トヨタカローラ京滋',      yomi:'とよたかろーらけいじ',   romaji:'toyota'},
+    {name:'ダイハツ滋賀販売',        yomi:'だいはつしがはんばい',   romaji:'daihatsu'},
     {name:'近畿日本ツーリスト',      yomi:'きんきにほんつーりすと'},
+    {name:'西濃運輸',                yomi:'せいのううんゆ',          romaji:'seino'},
+    {name:'日産プリンス京都',        yomi:'にっさんぷりんすきょうと',romaji:'nissan'},
+    {name:'ネッツトヨタ京都',        yomi:'ねっつとよたきょうと',   romaji:'nets'},
+    {name:'ネッツトヨタ滋賀',        yomi:'ねっつとよたしが',       romaji:'nets'},
+    {name:'ホンダカーズ近畿',        yomi:'ほんだかーずきんき',     romaji:'honda'},
+    {name:'富士火災海上',            yomi:'ふじかさいかいじょう'},
+    {name:'福山通運',                yomi:'ふくやまつううん'},
+    {name:'マツダオートザム',        yomi:'まつだおーとざむ',       romaji:'mazda'},
+    {name:'三井住友海上',            yomi:'みついすみともかいじょう'},
+    {name:'三菱自動車京都',          yomi:'みつびしじどうしゃきょうと',romaji:'mitsubishi'},
+    {name:'ヤマト運輸',              yomi:'やまとうんゆ',            romaji:'yamato'},
+    {name:'スズキ自販近畿',          yomi:'すずきじはんきんき',     romaji:'suzuki'},
+    {name:'JA共済',                  yomi:'じぇーえーきょうさい',   romaji:'ja'},
 ];
+
+// カタカナ→ひらがな変換
+function kata2hira(s) {
+    return s.replace(/[ァ-ヶ]/g, c => String.fromCharCode(c.charCodeAt(0) - 0x60));
+}
+
+let _clientTimer;
+function onClientInputDebounce(el) {
+    clearTimeout(_clientTimer);
+    _clientTimer = setTimeout(() => onClientInput(el.value), 80);
+}
 
 function onClientInput(val) {
     const box = document.getElementById('clientSuggest');
-    if (!val) { box.style.display = 'none'; return; }
+    if (!val || !val.trim()) { box.style.display = 'none'; return; }
+    const q = kata2hira(val.trim()).toLowerCase();
     const filtered = CLIENT_LIST.filter(c =>
-        c.yomi.startsWith(val) || c.name.includes(val)
+        c.yomi.startsWith(q) ||
+        c.name.includes(val.trim()) ||
+        (c.romaji && c.romaji.startsWith(q))
     );
     if (filtered.length === 0) { box.style.display = 'none'; return; }
     box.innerHTML = filtered.map(c =>
-        `<div onclick="selectClient('${c.name}')" style="padding:8px 12px;cursor:pointer;font-size:13px;border-bottom:1px solid #f0f0f0;"
-              onmouseover="this.style.background='#e8f4ff'" onmouseout="this.style.background=''">${c.name}</div>`
+        `<div onclick="selectClient('${c.name.replace(/'/g,"\\'")}')"`+
+        ` style="padding:8px 12px;cursor:pointer;font-size:13px;border-bottom:1px solid #f0f0f0;"`+
+        ` onmouseover="this.style.background='#e8f4ff'" onmouseout="this.style.background=''">${c.name}</div>`
     ).join('');
     box.style.display = 'block';
 }
