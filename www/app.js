@@ -409,6 +409,7 @@ function onClientInputDebounce(el) {
 }
 
 function onClientInput(val) {
+    const input = document.getElementById('formClient');
     const box = document.getElementById('clientSuggest');
     if (!val || !val.trim()) { box.style.display = 'none'; return; }
     const q = toSearchKey(val.trim());
@@ -423,6 +424,13 @@ function onClientInput(val) {
         ` style="padding:8px 12px;cursor:pointer;font-size:13px;border-bottom:1px solid #f0f0f0;"`+
         ` onmouseover="this.style.background='#e8f4ff'" onmouseout="this.style.background=''">${name}</div>`
     ).join('');
+    // position: fixed でモーダルのoverflow-y:autoを回避
+    const rect = input.getBoundingClientRect();
+    box.style.position = 'fixed';
+    box.style.left = rect.left + 'px';
+    box.style.width = rect.width + 'px';
+    box.style.top = (rect.bottom + 2) + 'px';
+    box.style.maxHeight = Math.min(220, window.innerHeight - rect.bottom - 10) + 'px';
     box.style.display = 'block';
 }
 

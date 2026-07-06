@@ -110,7 +110,14 @@ select option[value=""]{color:#aaa}
   <!-- 顧客名 -->
   <div class="section" id="clientSection">
     <div class="section-title">🏢 顧客名・取引先</div>
-    <input type="text" id="client" placeholder="例: 滋賀トヨタ 今井様">
+    <input type="text" id="client" placeholder="ひらがな/カナ/漢字で絞り込み"
+           oninput="onLiffClientDebounce(this)" oncompositionend="onLiffClientDebounce(this)" onkeyup="onLiffClientDebounce(this)"
+           autocomplete="off">
+    <div id="liffClientSuggest" style="display:none;background:white;border:1px solid #ccc;border-radius:0 0 8px 8px;position:fixed;left:0;right:0;z-index:9999;box-shadow:0 4px 12px rgba(0,0,0,0.15);overflow-y:auto;"></div>
+    <div style="margin-top:8px;">
+      <input type="text" id="clientContact" placeholder="先方担当者名（任意）" autocomplete="off"
+             style="font-size:14px;padding:10px 12px;border:1.5px solid #ddd;border-radius:8px;width:100%;">
+    </div>
   </div>
 
   <!-- 適用 -->
@@ -215,6 +222,53 @@ let selectedVehicleId = null;
 let selectedVehicles  = [];
 let selectedAction    = null;
 let lookupTimer       = null;
+let liffClientList    = [];
+
+// 取引先マスタ読み込み
+fetch(API_BASE + '/api/clients').then(r => r.json()).then(data => {
+    liffClientList = Array.isArray(data) ? data : [];
+}).catch(() => { liffClientList = []; });
+
+function toSearchKeyL(s) {
+    return s.normalize('NFKC').replace(/[ァ-ヶ]/g, c => String.fromCharCode(c.charCodeAt(0) - 0x60)).toLowerCase();
+}
+let _liffClientTimer;
+function onLiffClientDebounce(el) {
+    clearTimeout(_liffClientTimer);
+    _liffClientTimer = setTimeout(() => onLiffClientInput(el), 80);
+}
+function onLiffClientInput(el) {
+    const val = el.value;
+    const box = document.getElementById('liffClientSuggest');
+    if (!val || !val.trim()) { box.style.display = 'none'; return; }
+    const q = toSearchKeyL(val.trim());
+    const raw = val.trim().toLowerCase();
+    const filtered = liffClientList.filter(name => {
+        const key = toSearchKeyL(name);
+        return key.startsWith(q) || name.toLowerCase().includes(raw);
+    });
+    if (filtered.length === 0) { box.style.display = 'none'; return; }
+    const rect = el.getBoundingClientRect();
+    box.style.left   = rect.left + 'px';
+    box.style.width  = rect.width + 'px';
+    box.style.top    = (rect.bottom + 2) + 'px';
+    box.style.maxHeight = Math.min(220, window.innerHeight - rect.bottom - 10) + 'px';
+    box.innerHTML = filtered.slice(0, 30).map(name =>
+        `<div onclick="selectLiffClient(this)" data-name="${name.replace(/"/g,'&quot;')}"
+              style="padding:10px 14px;cursor:pointer;font-size:14px;border-bottom:1px solid #f0f0f0;"
+              ontouchstart="this.style.background='#e8f4ff'" ontouchend="this.style.background=''">${name}</div>`
+    ).join('');
+    box.style.display = 'block';
+}
+function selectLiffClient(el) {
+    document.getElementById('client').value = el.dataset.name;
+    document.getElementById('liffClientSuggest').style.display = 'none';
+    document.getElementById('clientContact').focus();
+}
+document.addEventListener('touchstart', e => {
+    if (!e.target.closest('#client') && !e.target.closest('#liffClientSuggest'))
+        document.getElementById('liffClientSuggest').style.display = 'none';
+});
 
 // 今日の日付をデフォルトに
 document.getElementById('startDate').value = new Date().toLocaleDateString('sv-SE');
@@ -344,6 +398,7 @@ async function submitForm() {
     start_date:       document.getElementById('startDate').value || null,
     end_date:         document.getElementById('endDate').value   || null,
     client:           document.getElementById('client').value.trim(),
+    client_contact:   document.getElementById('clientContact').value.trim(),
     category:         document.getElementById('category').value,
     staff:            getStaff(),
     mileage:          document.getElementById('mileage').value.trim(),
