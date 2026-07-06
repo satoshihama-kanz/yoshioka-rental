@@ -1478,6 +1478,14 @@ def qr_page():
 def liff_form():
     return send_from_directory('www', 'liff.html')
 
+@app.route('/api/liff/clients')
+def api_liff_clients():
+    """取引先マスタ（LIFF用・認証不要）"""
+    conn = get_db()
+    rows = [r[0] for r in conn.execute('SELECT name FROM clients ORDER BY name').fetchall()]
+    conn.close()
+    return jsonify(rows)
+
 @app.route('/api/liff/vehicles')
 def api_liff_vehicles():
     """車番検索（LIFF用・認証不要）"""

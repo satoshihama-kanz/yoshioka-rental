@@ -225,7 +225,7 @@ let lookupTimer       = null;
 let liffClientList    = [];
 
 // 取引先マスタ読み込み
-fetch(API_BASE + '/api/clients').then(r => r.json()).then(data => {
+fetch(API_BASE + '/api/liff/clients').then(r => r.json()).then(data => {
     liffClientList = Array.isArray(data) ? data : [];
 }).catch(() => { liffClientList = []; });
 
