@@ -10,7 +10,8 @@ let editingEventId = null;
 async function init() {
     const [v, e] = await Promise.all([
         fetch(API + '/api/vehicles').then(r => r.json()),
-        fetch(API + '/api/events').then(r => r.json())
+        fetch(API + '/api/events').then(r => r.json()),
+        loadClients()
     ]);
     vehicles = Array.isArray(v) ? v : [];
     events = Array.isArray(e) ? e : [];
@@ -382,42 +383,18 @@ function renderStockTable(todayStr) {
 
 // ====== 取引先マスタ ======
 // yomi: ひらがな読み, romaji: ローマ字略称（アルファベット社名用）
-const CLIENT_LIST = [
-    {name:'あいおいニッセイ同和',    yomi:'あいおいにっせいどうわ'},
-    {name:'アクサダイレクト',        yomi:'あくさだいれくと',        romaji:'axa'},
-    {name:'イエローハット大津店',    yomi:'いえろーはっとおおつてん'},
-    {name:'オートバックス草津店',    yomi:'おーとばっくすくさつてん'},
-    {name:'ガリバー京都店',          yomi:'がりばーきょうとてん'},
-    {name:'ガリバー大津店',          yomi:'がりばーおおつてん'},
-    {name:'カーコンビニ倶楽部',      yomi:'かーこんびにくらぶ'},
-    {name:'コバック草津店',          yomi:'こばっくくさつてん'},
-    {name:'佐川急便',                yomi:'さがわきゅうびん',        romaji:'sagawa'},
-    {name:'セコム損保',              yomi:'せこむそんぽ',            romaji:'secom'},
-    {name:'ソニー損保',              yomi:'そにーそんぽ',            romaji:'sony'},
-    {name:'損保ジャパン',            yomi:'そんぽじゃぱん'},
-    {name:'チューリッヒ保険',        yomi:'ちゅーりっひほけん'},
-    {name:'東京海上日動',            yomi:'とうきょうかいじょうにちどう'},
-    {name:'トヨタカローラ京滋',      yomi:'とよたかろーらけいじ',   romaji:'toyota'},
-    {name:'ダイハツ滋賀販売',        yomi:'だいはつしがはんばい',   romaji:'daihatsu'},
-    {name:'近畿日本ツーリスト',      yomi:'きんきにほんつーりすと'},
-    {name:'西濃運輸',                yomi:'せいのううんゆ',          romaji:'seino'},
-    {name:'日産プリンス京都',        yomi:'にっさんぷりんすきょうと',romaji:'nissan'},
-    {name:'ネッツトヨタ京都',        yomi:'ねっつとよたきょうと',   romaji:'nets'},
-    {name:'ネッツトヨタ滋賀',        yomi:'ねっつとよたしが',       romaji:'nets'},
-    {name:'ホンダカーズ近畿',        yomi:'ほんだかーずきんき',     romaji:'honda'},
-    {name:'富士火災海上',            yomi:'ふじかさいかいじょう'},
-    {name:'福山通運',                yomi:'ふくやまつううん'},
-    {name:'マツダオートザム',        yomi:'まつだおーとざむ',       romaji:'mazda'},
-    {name:'三井住友海上',            yomi:'みついすみともかいじょう'},
-    {name:'三菱自動車京都',          yomi:'みつびしじどうしゃきょうと',romaji:'mitsubishi'},
-    {name:'ヤマト運輸',              yomi:'やまとうんゆ',            romaji:'yamato'},
-    {name:'スズキ自販近畿',          yomi:'すずきじはんきんき',     romaji:'suzuki'},
-    {name:'JA共済',                  yomi:'じぇーえーきょうさい',   romaji:'ja'},
-];
+// 取引先マスタ（APIから取得）
+let CLIENT_LIST = [];
+async function loadClients() {
+    try {
+        CLIENT_LIST = await fetch(API + '/api/clients').then(r => r.json());
+    } catch(e) { CLIENT_LIST = []; }
+}
 
-// カタカナ→ひらがな変換
-function kata2hira(s) {
-    return s.replace(/[ァ-ヶ]/g, c => String.fromCharCode(c.charCodeAt(0) - 0x60));
+// 半角カナ・全角カナ→ひらがな（NFKC正規化 + 全角カナ→ひらがな）
+function toSearchKey(s) {
+    const normalized = s.normalize('NFKC');
+    return normalized.replace(/[ァ-ヶ]/g, c => String.fromCharCode(c.charCodeAt(0) - 0x60)).toLowerCase();
 }
 
 let _clientTimer;
@@ -429,24 +406,26 @@ function onClientInputDebounce(el) {
 function onClientInput(val) {
     const box = document.getElementById('clientSuggest');
     if (!val || !val.trim()) { box.style.display = 'none'; return; }
-    const q = kata2hira(val.trim()).toLowerCase();
-    const filtered = CLIENT_LIST.filter(c =>
-        c.yomi.startsWith(q) ||
-        c.name.includes(val.trim()) ||
-        (c.romaji && c.romaji.startsWith(q))
-    );
+    const q = toSearchKey(val.trim());
+    const raw = val.trim().toLowerCase();
+    const filtered = CLIENT_LIST.filter(name => {
+        const key = toSearchKey(name);
+        return key.startsWith(q) || name.toLowerCase().includes(raw);
+    });
     if (filtered.length === 0) { box.style.display = 'none'; return; }
-    box.innerHTML = filtered.map(c =>
-        `<div onclick="selectClient('${c.name.replace(/'/g,"\\'")}')"`+
+    box.innerHTML = filtered.slice(0, 30).map(name =>
+        `<div onclick="selectClient(this)" data-name="${name.replace(/"/g,'&quot;')}"`+
         ` style="padding:8px 12px;cursor:pointer;font-size:13px;border-bottom:1px solid #f0f0f0;"`+
-        ` onmouseover="this.style.background='#e8f4ff'" onmouseout="this.style.background=''">${c.name}</div>`
+        ` onmouseover="this.style.background='#e8f4ff'" onmouseout="this.style.background=''">${name}</div>`
     ).join('');
     box.style.display = 'block';
 }
 
-function selectClient(name) {
+function selectClient(el) {
+    const name = el.dataset.name;
     document.getElementById('formClient').value = name;
     document.getElementById('clientSuggest').style.display = 'none';
+    document.getElementById('formClientContact').focus();
 }
 
 document.addEventListener('click', e => {
@@ -633,6 +612,7 @@ function openAddModal(vehicleId) {
     document.getElementById('formEndDate').value = '';
     document.getElementById('formStaff').value = '';
     document.getElementById('formClient').value = '';
+    document.getElementById('formClientContact').value = '';
     document.getElementById('formCategory').value = '';
     document.getElementById('formNotes').value = '';
     onStatusChange();
@@ -672,6 +652,7 @@ async function saveEvent() {
         end_date: document.getElementById('formEndDate').value || null,
         staff: document.getElementById('formStaff').value || null,
         client: document.getElementById('formClient').value.trim() || null,
+        client_contact: document.getElementById('formClientContact').value.trim() || null,
         category: document.getElementById('formCategory').value || null,
         notes: document.getElementById('formNotes').value.trim() || null
     };
