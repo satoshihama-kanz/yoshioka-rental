@@ -235,7 +235,7 @@ function toSearchKeyL(s) {
 let _liffClientTimer;
 function onLiffClientDebounce(el) {
     clearTimeout(_liffClientTimer);
-    _liffClientTimer = setTimeout(() => onLiffClientInput(el), 80);
+    _liffClientTimer = setTimeout(() => onLiffClientInput(el), 200);
 }
 function onLiffClientInput(el) {
     const val = el.value;

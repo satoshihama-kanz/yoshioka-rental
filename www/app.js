@@ -405,7 +405,7 @@ function toSearchKey(s) {
 let _clientTimer;
 function onClientInputDebounce(el) {
     clearTimeout(_clientTimer);
-    _clientTimer = setTimeout(() => onClientInput(el.value), 80);
+    _clientTimer = setTimeout(() => onClientInput(el.value), 200);
 }
 
 function onClientInput(val) {

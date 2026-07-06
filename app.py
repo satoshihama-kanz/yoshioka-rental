@@ -176,7 +176,7 @@ _CLIENT_SEED = [
     "京都ﾄﾖﾍﾟｯﾄ㈱宇治店","京都ﾄﾖﾍﾟｯﾄ㈱山科店","京都ﾗｲﾌﾊﾟｰﾄﾅｰ","京鈑金",
     "今井自動車工業","今林 幸海","伊吹","保険ﾏｲｽﾀｰ","公成建設株式会社",
     "共栄火災海上保険株式会社","則本　拓哉","加藤石油","勝美自動車株式会社",
-    "北川ﾓｰﾀｰｽ","北田自動車","古一商会","合同会社H'2","合同会社SUWANC",
+    "北川ﾓｰﾀｰｽ","北田自動車","古一商会","合同会社H'2","合同会社H’2","合同会社SUWANC",
     "合同会社　LIF","吉仲","吉岡自動車","吉田自動車工業","善ｵｰﾄ",
     "土田企画ｵｰﾄｻｰﾋﾞｽ","塚本","大島自動車工作所","大谷自動車","大阪ﾄﾖﾍﾟｯﾄ㈱吹田店",
     "契約ｾﾝﾀｰ","安心ｱｼｽﾄ株式会社","宮村","家具町ﾓｰﾀｰｽ","富士ｵｰﾄ",
@@ -357,10 +357,9 @@ def init_db():
             pass
     conn.commit()
 
-    # 取引先マスタ初期データ投入（INSERT OR IGNORE で重複スキップ）
-    if c.execute('SELECT COUNT(*) FROM clients').fetchone()[0] == 0:
-        _seed_clients(c)
-        conn.commit()
+    # 取引先マスタ：常にINSERT OR IGNOREで差分追加（欠損補完）
+    _seed_clients(c)
+    conn.commit()
 
     base = os.path.dirname(__file__)
     if c.execute('SELECT COUNT(*) FROM vehicles').fetchone()[0] == 0:
