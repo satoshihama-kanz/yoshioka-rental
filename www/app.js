@@ -387,8 +387,13 @@ function renderStockTable(todayStr) {
 let CLIENT_LIST = [];
 async function loadClients() {
     try {
-        CLIENT_LIST = await fetch(API + '/api/clients').then(r => r.json());
-    } catch(e) { CLIENT_LIST = []; }
+        const data = await fetch(API + '/api/clients').then(r => r.json());
+        CLIENT_LIST = Array.isArray(data) ? data : [];
+        console.log('[clients] loaded:', CLIENT_LIST.length);
+    } catch(e) {
+        console.error('[clients] load error:', e);
+        CLIENT_LIST = [];
+    }
 }
 
 // 半角カナ・全角カナ→ひらがな（NFKC正規化 + 全角カナ→ひらがな）

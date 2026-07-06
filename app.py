@@ -1263,6 +1263,20 @@ def api_pending_remind():
     send_line_push(group_id, '\n'.join(lines))
     return jsonify({'sent': True, 'count': len(items)})
 
+# ── 取引先マスタ強制シード（管理者専用） ─────────────────────
+@app.route('/api/admin/seed-clients', methods=['POST'])
+def admin_seed_clients():
+    key = request.headers.get('X-Admin-Key','') or request.args.get('key','')
+    if key != ADMIN_PASS:
+        return jsonify({'error': 'unauthorized'}), 401
+    conn = get_db()
+    c = conn.cursor()
+    _seed_clients(c)
+    conn.commit()
+    count = c.execute('SELECT COUNT(*) FROM clients').fetchone()[0]
+    conn.close()
+    return jsonify({'ok': True, 'count': count})
+
 # ── フォームリンクをグループへプッシュ（管理者専用） ───────────
 @app.route('/api/admin/send-form-link', methods=['POST'])
 def admin_send_form_link():
