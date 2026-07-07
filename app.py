@@ -533,13 +533,9 @@ def register_event(v, status, state):
     conn.commit()
     conn.close()
 
-    period = start_d + (' 〜 ' + end_d if end_d else '〜（返却未定）')
-    msg = (f"✅ 登録しました\n"
-           f"🚗 {v['number']} {v.get('car_type','')}\n"
-           f"状態: {status}\n"
-           f"担当: {staff}　顧客: {client}\n"
-           f"期間: {period}")
-    if category: msg += f"\n区分: {category}"
+    msg = _build_line_msg(
+        v['number'], v.get('car_type', ''), status, staff, client, start_d, end_d, category
+    )
     if mileage:  msg += f"\n走行距離: {mileage}km"
     if remarks:  msg += f"\n備考: {remarks}"
     return msg
@@ -1047,28 +1043,48 @@ def api_events_get():
     conn.close()
     return jsonify(rows)
 
+_KATA_TO_HANKAKU = str.maketrans(
+    'アイウエオカキクケコサシスセソタチツテトナニヌネノハヒフヘホマミムメモヤユヨラリルレロワヲン'
+    'ァィゥェォッャュョ゛゜ーガギグゲゴザジズゼゾダヂヅデドバビブベボパピプペポ',
+    'ｱｲｳｴｵｶｷｸｹｺｻｼｽｾｿﾀﾁﾂﾃﾄﾅﾆﾇﾈﾉﾊﾋﾌﾍﾎﾏﾐﾑﾒﾓﾔﾕﾖﾗﾘﾙﾚﾛﾜｦﾝ'
+    'ｧｨｩｪｫｯｬｭｮﾞﾟｰｶﾞｷﾞｸﾞｹﾞｺﾞｻﾞｼﾞｽﾞｾﾞｿﾞﾀﾞﾁﾞﾂﾞﾃﾞﾄﾞﾊﾞﾋﾞﾌﾞﾍﾞﾎﾞﾊﾟﾋﾟﾌﾟﾍﾟﾎﾟ'
+)
+
+def _to_hankaku(s):
+    return s.translate(_KATA_TO_HANKAKU)
+
+def _fmt_date(ds):
+    if not ds: return ''
+    try:
+        dt = datetime.strptime(ds, '%Y-%m-%d')
+        return f"{dt.month}/{dt.day}"
+    except:
+        return ds
+
+def _build_line_msg(num, car_type, status, staff, client, start_d, end_d, category):
+    line1_parts = [p for p in [num, car_type, status, staff] if p]
+    line1 = '🚗 ' + ' '.join(line1_parts)
+    period = _fmt_date(start_d)
+    if end_d:
+        period += '〜' + _fmt_date(end_d)
+    elif period:
+        period += '〜'
+    line3_parts = [p for p in [period, _to_hankaku(category) if category else ''] if p]
+    lines = [line1]
+    if client: lines.append(client)
+    if line3_parts: lines.append(' '.join(line3_parts))
+    return '\n'.join(lines)
+
 def _event_summary_line(d, conn):
     """イベントのサマリ文字列を生成してグループLINEに送信"""
     v = conn.execute('SELECT number, car_type FROM vehicles WHERE id=?', (d['vehicle_id'],)).fetchone()
     num      = v['number'] if v else str(d['vehicle_id'])
     car_type = v['car_type'] if v else ''
-    status   = d.get('status', '')
-    staff    = d.get('staff', '')
-    client   = d.get('client', '')
-    category = d.get('category', '')
-    start_d  = (d.get('start_date') or '')
-    end_d    = (d.get('end_date') or '')
-    # 日付を M/D 形式に変換
-    def fmt(ds):
-        if not ds: return ''
-        try:
-            dt = datetime.strptime(ds, '%Y-%m-%d')
-            return f"{dt.month}/{dt.day}"
-        except:
-            return ds
-    period = fmt(start_d) + '〜' + (fmt(end_d) if end_d else '')
-    parts = [p for p in [num, car_type, status, staff, client, period, category] if p]
-    msg = '📋 ' + '、'.join(parts)
+    msg = _build_line_msg(
+        num, car_type,
+        d.get('status', ''), d.get('staff', ''), d.get('client', ''),
+        d.get('start_date') or '', d.get('end_date') or '', d.get('category', '')
+    )
     group_id = get_setting('line_group_id')
     if group_id and LINE_CHANNEL_TOKEN:
         send_line_push(group_id, msg)
@@ -1557,7 +1573,7 @@ def api_liff_submit():
     # グループLINEに通知
     group_id = get_setting('line_group_id')
     if group_id:
-        send_line_push(group_id, f"📱 フォームより登録\n{msg}")
+        send_line_push(group_id, msg)
 
     return jsonify({'ok': True, 'message': msg})
 
