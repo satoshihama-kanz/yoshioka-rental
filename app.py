@@ -967,13 +967,19 @@ def send_form_button(reply_token):
 def send_line_push(to, message):
     """LINE グループ・ユーザーへのプッシュ送信"""
     if not LINE_CHANNEL_TOKEN or not to:
+        app.logger.warning(f'[LINE push] skipped: token={bool(LINE_CHANNEL_TOKEN)} to={bool(to)}')
         return
-    requests.post(
-        'https://api.line.me/v2/bot/message/push',
-        headers={'Authorization': f'Bearer {LINE_CHANNEL_TOKEN}',
-                 'Content-Type': 'application/json'},
-        json={'to': to, 'messages': [{'type': 'text', 'text': message}]},
-        timeout=5)
+    try:
+        r = requests.post(
+            'https://api.line.me/v2/bot/message/push',
+            headers={'Authorization': f'Bearer {LINE_CHANNEL_TOKEN}',
+                     'Content-Type': 'application/json'},
+            json={'to': to, 'messages': [{'type': 'text', 'text': message}]},
+            timeout=5)
+        if r.status_code != 200:
+            app.logger.error(f'[LINE push] error {r.status_code}: {r.text}')
+    except Exception as e:
+        app.logger.error(f'[LINE push] exception: {e}')
 
 def store_pending(text, source_id, sender):
     """未対応メッセージをDBに保存"""
@@ -1585,10 +1591,14 @@ def api_liff_submit():
 
     # グループLINEに通知
     group_id = get_setting('line_group_id')
-    if group_id:
+    line_sent = False
+    if group_id and LINE_CHANNEL_TOKEN:
         send_line_push(group_id, msg)
+        line_sent = True
+    else:
+        app.logger.warning(f'[liff/submit] LINE not sent: group_id={group_id!r} token={bool(LINE_CHANNEL_TOKEN)}')
 
-    return jsonify({'ok': True, 'message': msg})
+    return jsonify({'ok': True, 'message': msg, 'line_sent': line_sent})
 
 # ── 車両マスタ一括追加（管理者専用） ────────────────────────
 @app.route('/api/admin/add-vehicles', methods=['POST'])
