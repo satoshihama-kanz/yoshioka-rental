@@ -419,7 +419,7 @@ async function submitForm() {
     const data = await res.json();
     if (res.ok && data.ok) {
       result.className   = 'result success';
-      result.textContent = '✅ 登録しました！\n' + (data.message || '');
+      result.textContent = data.message || '登録しました';
       result.style.display = 'block';
       result.style.whiteSpace = 'pre-wrap';
       btn.textContent = '登録完了 ✅';
