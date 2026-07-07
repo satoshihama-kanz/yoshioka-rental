@@ -1,0 +1,326 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>マスタ管理 | 吉岡商会</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:'Helvetica Neue',Arial,sans-serif;background:#f0f4f8;color:#333;font-size:14px}
+header{background:#1a3a5c;color:white;padding:14px 20px;display:flex;align-items:center;gap:16px}
+header h1{font-size:18px}
+header a{color:#aad4f5;text-decoration:none;font-size:13px}
+.tabs{display:flex;background:#fff;border-bottom:2px solid #e0e7ef;padding:0 20px}
+.tab{padding:12px 20px;cursor:pointer;font-weight:bold;color:#666;border-bottom:3px solid transparent;margin-bottom:-2px}
+.tab.active{color:#1a3a5c;border-bottom-color:#1a3a5c}
+.content{display:none;padding:20px}
+.content.active{display:block}
+.toolbar{display:flex;align-items:center;gap:10px;margin-bottom:14px;flex-wrap:wrap}
+.toolbar input{padding:7px 12px;border:1px solid #ccc;border-radius:6px;font-size:13px;width:220px}
+.btn{padding:7px 16px;border:none;border-radius:6px;cursor:pointer;font-size:13px;font-weight:bold}
+.btn-primary{background:#1a3a5c;color:white}
+.btn-success{background:#4CAF50;color:white}
+.btn-danger{background:#f44336;color:white;padding:4px 10px;font-size:12px}
+.btn-edit{background:#FF9800;color:white;padding:4px 10px;font-size:12px}
+table{width:100%;border-collapse:collapse;background:white;border-radius:8px;overflow:hidden;box-shadow:0 1px 4px rgba(0,0,0,0.08)}
+th{background:#1a3a5c;color:white;padding:10px 12px;text-align:left;font-size:13px}
+td{padding:9px 12px;border-bottom:1px solid #f0f0f0;vertical-align:middle}
+tr:hover td{background:#f8fafc}
+.badge{display:inline-block;padding:2px 8px;border-radius:10px;font-size:11px;font-weight:bold}
+.badge-ok{background:#e8f5e9;color:#2e7d32}
+.badge-ng{background:#fdecea;color:#c62828}
+.count{color:#888;font-size:12px}
+/* modal */
+.overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,0.45);z-index:1000;align-items:center;justify-content:center}
+.overlay.open{display:flex}
+.modal{background:white;border-radius:10px;padding:24px;width:100%;max-width:420px;box-shadow:0 8px 32px rgba(0,0,0,0.2)}
+.modal h3{margin-bottom:16px;font-size:16px;color:#1a3a5c}
+.form-row{margin-bottom:12px}
+.form-row label{display:block;font-size:12px;color:#666;margin-bottom:4px}
+.form-row input,.form-row select{width:100%;padding:8px 10px;border:1px solid #ddd;border-radius:6px;font-size:14px}
+.modal-actions{display:flex;gap:10px;justify-content:flex-end;margin-top:16px}
+.alert{padding:8px 12px;border-radius:6px;margin-bottom:12px;font-size:13px;display:none}
+.alert.error{background:#fdecea;color:#c62828;display:block}
+.alert.success{background:#e8f5e9;color:#2e7d32;display:block}
+</style>
+</head>
+<body>
+
+<header>
+  <h1>⚙️ マスタ管理</h1>
+  <a href="/">← ダッシュボードへ戻る</a>
+</header>
+
+<div class="tabs">
+  <div class="tab active" onclick="showTab('vehicles')">🚗 車両マスタ</div>
+  <div class="tab" onclick="showTab('clients')">🏢 取引先マスタ</div>
+  <div class="tab" onclick="showTab('staff')">👤 従業員マスタ</div>
+</div>
+
+<!-- 車両マスタ -->
+<div class="content active" id="tab-vehicles">
+  <div class="toolbar">
+    <input type="text" id="vSearch" placeholder="車番・車種で検索…" oninput="renderVehicles()">
+    <button class="btn btn-success" onclick="openVehicleModal()">＋ 追加</button>
+    <span class="count" id="vCount"></span>
+  </div>
+  <table>
+    <thead><tr><th>車番</th><th>車種</th><th>地域</th><th>区分</th><th>スタッドレス</th><th>他社借り</th><th>操作</th></tr></thead>
+    <tbody id="vTable"></tbody>
+  </table>
+</div>
+
+<!-- 取引先マスタ -->
+<div class="content" id="tab-clients">
+  <div class="toolbar">
+    <input type="text" id="cSearch" placeholder="名前・読み仮名で検索…" oninput="renderClients()">
+    <button class="btn btn-success" onclick="openClientModal()">＋ 追加</button>
+    <span class="count" id="cCount"></span>
+  </div>
+  <table>
+    <thead><tr><th>取引先名</th><th>読み仮名</th><th>操作</th></tr></thead>
+    <tbody id="cTable"></tbody>
+  </table>
+</div>
+
+<!-- 従業員マスタ -->
+<div class="content" id="tab-staff">
+  <div class="toolbar">
+    <button class="btn btn-success" onclick="openStaffModal()">＋ 追加</button>
+    <span class="count" id="sCount"></span>
+  </div>
+  <table>
+    <thead><tr><th>氏名</th><th>操作</th></tr></thead>
+    <tbody id="sTable"></tbody>
+  </table>
+</div>
+
+<!-- 車両モーダル -->
+<div class="overlay" id="vehicleModal">
+  <div class="modal">
+    <h3 id="vModalTitle">車両を追加</h3>
+    <div class="alert" id="vAlert"></div>
+    <div class="form-row"><label>車番（4桁）</label><input type="text" id="vNumber" placeholder="例: 1234" maxlength="6"></div>
+    <div class="form-row"><label>車種</label><input type="text" id="vCarType" placeholder="例: ADバン"></div>
+    <div class="form-row"><label>地域</label><input type="text" id="vRegion" placeholder="例: 京都"></div>
+    <div class="form-row"><label>区分</label><input type="text" id="vCarCategory" placeholder="例: 軽自動車"></div>
+    <div class="form-row">
+      <label><input type="checkbox" id="vStudless"> スタッドレスタイヤ装着</label>
+    </div>
+    <div class="form-row">
+      <label><input type="checkbox" id="vRentalOther"> 他社借り車両</label>
+    </div>
+    <div class="modal-actions">
+      <button class="btn" onclick="closeModal('vehicleModal')" style="background:#eee">キャンセル</button>
+      <button class="btn btn-primary" onclick="saveVehicle()">保存</button>
+    </div>
+  </div>
+</div>
+
+<!-- 取引先モーダル -->
+<div class="overlay" id="clientModal">
+  <div class="modal">
+    <h3 id="cModalTitle">取引先を追加</h3>
+    <div class="alert" id="cAlert"></div>
+    <div class="form-row"><label>取引先名</label><input type="text" id="cName" placeholder="例: ネッツトヨタ滋賀"></div>
+    <div class="form-row"><label>読み仮名（カタカナ）</label><input type="text" id="cReading" placeholder="例: ネッツトヨタシガ"></div>
+    <div class="modal-actions">
+      <button class="btn" onclick="closeModal('clientModal')" style="background:#eee">キャンセル</button>
+      <button class="btn btn-primary" onclick="saveClient()">保存</button>
+    </div>
+  </div>
+</div>
+
+<!-- 従業員モーダル -->
+<div class="overlay" id="staffModal">
+  <div class="modal">
+    <h3 id="sModalTitle">従業員を追加</h3>
+    <div class="alert" id="sAlert"></div>
+    <div class="form-row"><label>氏名</label><input type="text" id="sName" placeholder="例: 山田"></div>
+    <div class="modal-actions">
+      <button class="btn" onclick="closeModal('staffModal')" style="background:#eee">キャンセル</button>
+      <button class="btn btn-primary" onclick="saveStaff()">保存</button>
+    </div>
+  </div>
+</div>
+
+<script>
+const API = '';
+let vehicles = [], clients = [], staffList = [];
+let editVid = null, editCid = null, editSid = null;
+
+async function load() {
+  [vehicles, clients, staffList] = await Promise.all([
+    fetch(API + '/api/master/vehicles').then(r => r.json()),
+    fetch(API + '/api/master/clients').then(r => r.json()),
+    fetch(API + '/api/master/staff').then(r => r.json()),
+  ]);
+  renderVehicles(); renderClients(); renderStaff();
+}
+
+function showTab(name) {
+  document.querySelectorAll('.tab').forEach((t,i) => t.classList.toggle('active', ['vehicles','clients','staff'][i] === name));
+  document.querySelectorAll('.content').forEach(c => c.classList.remove('active'));
+  document.getElementById('tab-' + name).classList.add('active');
+}
+
+// ── 車両 ──
+function renderVehicles() {
+  const q = document.getElementById('vSearch').value.toLowerCase();
+  const filtered = vehicles.filter(v => !q || v.number.includes(q) || (v.car_type||'').toLowerCase().includes(q));
+  document.getElementById('vCount').textContent = filtered.length + ' 件';
+  document.getElementById('vTable').innerHTML = filtered.map(v => `
+    <tr>
+      <td><b>${v.number}</b></td>
+      <td>${v.car_type||''}</td>
+      <td>${v.region||''}</td>
+      <td>${v.car_category||''}</td>
+      <td>${v.studless ? '<span class="badge badge-ok">あり</span>' : ''}</td>
+      <td>${v.is_rental_other ? '<span class="badge badge-ng">他社借り</span>' : ''}</td>
+      <td>
+        <button class="btn btn-edit" onclick="openVehicleModal(${v.id})">編集</button>
+        <button class="btn btn-danger" onclick="deleteVehicle(${v.id},'${v.number}')">削除</button>
+      </td>
+    </tr>`).join('');
+}
+
+function openVehicleModal(id) {
+  editVid = id || null;
+  const v = id ? vehicles.find(x => x.id === id) : {};
+  document.getElementById('vModalTitle').textContent = id ? '車両を編集' : '車両を追加';
+  document.getElementById('vNumber').value = v.number || '';
+  document.getElementById('vCarType').value = v.car_type || '';
+  document.getElementById('vRegion').value = v.region || '';
+  document.getElementById('vCarCategory').value = v.car_category || '';
+  document.getElementById('vStudless').checked = !!v.studless;
+  document.getElementById('vRentalOther').checked = !!v.is_rental_other;
+  document.getElementById('vAlert').className = 'alert';
+  document.getElementById('vehicleModal').classList.add('open');
+}
+
+async function saveVehicle() {
+  const body = {
+    number: document.getElementById('vNumber').value.trim(),
+    car_type: document.getElementById('vCarType').value.trim(),
+    region: document.getElementById('vRegion').value.trim(),
+    car_category: document.getElementById('vCarCategory').value.trim(),
+    studless: document.getElementById('vStudless').checked,
+    is_rental_other: document.getElementById('vRentalOther').checked,
+  };
+  if (!body.number) { showAlert('vAlert', '車番を入力してください'); return; }
+  const url = editVid ? `${API}/api/master/vehicles/${editVid}` : `${API}/api/master/vehicles`;
+  const method = editVid ? 'PUT' : 'POST';
+  const res = await fetch(url, {method, headers:{'Content-Type':'application/json'}, body: JSON.stringify(body)});
+  const data = await res.json();
+  if (data.error) { showAlert('vAlert', data.error); return; }
+  closeModal('vehicleModal');
+  await load();
+}
+
+async function deleteVehicle(id, num) {
+  if (!confirm(`車番 ${num} を削除しますか？関連するすべての状態履歴も削除されます。`)) return;
+  await fetch(`${API}/api/master/vehicles/${id}`, {method:'DELETE'});
+  await load();
+}
+
+// ── 取引先 ──
+function renderClients() {
+  const q = document.getElementById('cSearch').value.toLowerCase();
+  const filtered = clients.filter(c => !q ||
+    c.name.toLowerCase().includes(q) || (c.reading||'').toLowerCase().includes(q));
+  document.getElementById('cCount').textContent = filtered.length + ' 件';
+  document.getElementById('cTable').innerHTML = filtered.map(c => `
+    <tr>
+      <td>${c.name}</td>
+      <td style="color:#888">${c.reading||''}</td>
+      <td>
+        <button class="btn btn-edit" onclick="openClientModal(${c.id})">編集</button>
+        <button class="btn btn-danger" onclick="deleteClient(${c.id},'${c.name.replace(/'/g,"\\'")}')">削除</button>
+      </td>
+    </tr>`).join('');
+}
+
+function openClientModal(id) {
+  editCid = id || null;
+  const c = id ? clients.find(x => x.id === id) : {};
+  document.getElementById('cModalTitle').textContent = id ? '取引先を編集' : '取引先を追加';
+  document.getElementById('cName').value = c.name || '';
+  document.getElementById('cReading').value = c.reading || '';
+  document.getElementById('cAlert').className = 'alert';
+  document.getElementById('clientModal').classList.add('open');
+}
+
+async function saveClient() {
+  const body = {
+    name: document.getElementById('cName').value.trim(),
+    reading: document.getElementById('cReading').value.trim(),
+  };
+  if (!body.name) { showAlert('cAlert', '取引先名を入力してください'); return; }
+  const url = editCid ? `${API}/api/master/clients/${editCid}` : `${API}/api/master/clients`;
+  const method = editCid ? 'PUT' : 'POST';
+  const res = await fetch(url, {method, headers:{'Content-Type':'application/json'}, body: JSON.stringify(body)});
+  const data = await res.json();
+  if (data.error) { showAlert('cAlert', data.error); return; }
+  closeModal('clientModal');
+  await load();
+}
+
+async function deleteClient(id, name) {
+  if (!confirm(`「${name}」を削除しますか？`)) return;
+  await fetch(`${API}/api/master/clients/${id}`, {method:'DELETE'});
+  await load();
+}
+
+// ── 従業員 ──
+function renderStaff() {
+  document.getElementById('sCount').textContent = staffList.length + ' 件';
+  document.getElementById('sTable').innerHTML = staffList.map(s => `
+    <tr>
+      <td><b>${s.name}</b></td>
+      <td>
+        <button class="btn btn-edit" onclick="openStaffModal(${s.id})">編集</button>
+        <button class="btn btn-danger" onclick="deleteStaff(${s.id},'${s.name}')">削除</button>
+      </td>
+    </tr>`).join('');
+}
+
+function openStaffModal(id) {
+  editSid = id || null;
+  const s = id ? staffList.find(x => x.id === id) : {};
+  document.getElementById('sModalTitle').textContent = id ? '従業員を編集' : '従業員を追加';
+  document.getElementById('sName').value = s.name || '';
+  document.getElementById('sAlert').className = 'alert';
+  document.getElementById('staffModal').classList.add('open');
+}
+
+async function saveStaff() {
+  const body = { name: document.getElementById('sName').value.trim() };
+  if (!body.name) { showAlert('sAlert', '氏名を入力してください'); return; }
+  const url = editSid ? `${API}/api/master/staff/${editSid}` : `${API}/api/master/staff`;
+  const method = editSid ? 'PUT' : 'POST';
+  const res = await fetch(url, {method, headers:{'Content-Type':'application/json'}, body: JSON.stringify(body)});
+  const data = await res.json();
+  if (data.error) { showAlert('sAlert', data.error); return; }
+  closeModal('staffModal');
+  await load();
+}
+
+async function deleteStaff(id, name) {
+  if (!confirm(`「${name}」を削除しますか？`)) return;
+  await fetch(`${API}/api/master/staff/${id}`, {method:'DELETE'});
+  await load();
+}
+
+// ── 共通 ──
+function closeModal(id) { document.getElementById(id).classList.remove('open'); }
+function showAlert(id, msg) {
+  const el = document.getElementById(id);
+  el.textContent = msg;
+  el.className = 'alert error';
+}
+document.querySelectorAll('.overlay').forEach(o => o.addEventListener('click', e => { if(e.target===o) o.classList.remove('open'); }));
+
+load();
+</script>
+</body>
+</html>

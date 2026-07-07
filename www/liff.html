@@ -230,7 +230,7 @@ fetch(API_BASE + '/api/liff/clients').then(r => r.json()).then(data => {
 }).catch(() => { liffClientList = []; });
 
 function toSearchKeyL(s) {
-    return s.normalize('NFKC').replace(/[ァ-ヶ]/g, c => String.fromCharCode(c.charCodeAt(0) - 0x60)).toLowerCase();
+    return (s||'').normalize('NFKC').replace(/[ァ-ヶ]/g, c => String.fromCharCode(c.charCodeAt(0) - 0x60)).toLowerCase();
 }
 let _liffClientTimer;
 function onLiffClientDebounce(el) {
@@ -243,9 +243,11 @@ function onLiffClientInput(el) {
     if (!val || !val.trim()) { box.style.display = 'none'; return; }
     const q = toSearchKeyL(val.trim());
     const raw = val.trim().toLowerCase();
-    const filtered = liffClientList.filter(name => {
-        const key = toSearchKeyL(name);
-        return key.startsWith(q) || name.toLowerCase().includes(raw);
+    const filtered = liffClientList.filter(item => {
+        const name = item.name || item;
+        const reading = item.reading || '';
+        return toSearchKeyL(name).startsWith(q) || toSearchKeyL(reading).startsWith(q) ||
+               name.toLowerCase().includes(raw) || reading.toLowerCase().includes(raw);
     });
     if (filtered.length === 0) { box.style.display = 'none'; return; }
     const rect = el.getBoundingClientRect();
@@ -253,11 +255,12 @@ function onLiffClientInput(el) {
     box.style.width  = rect.width + 'px';
     box.style.top    = (rect.bottom + 2) + 'px';
     box.style.maxHeight = Math.min(220, window.innerHeight - rect.bottom - 10) + 'px';
-    box.innerHTML = filtered.slice(0, 30).map(name =>
-        `<div onclick="selectLiffClient(this)" data-name="${name.replace(/"/g,'&quot;')}"
+    box.innerHTML = filtered.slice(0, 30).map(item => {
+        const name = item.name || item;
+        return `<div onclick="selectLiffClient(this)" data-name="${name.replace(/"/g,'&quot;')}"
               style="padding:10px 14px;cursor:pointer;font-size:14px;border-bottom:1px solid #f0f0f0;"
-              ontouchstart="this.style.background='#e8f4ff'" ontouchend="this.style.background=''">${name}</div>`
-    ).join('');
+              ontouchstart="this.style.background='#e8f4ff'" ontouchend="this.style.background=''">${name}</div>`;
+    }).join('');
     box.style.display = 'block';
 }
 function selectLiffClient(el) {

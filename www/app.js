@@ -384,7 +384,7 @@ function renderStockTable(todayStr) {
 // ====== 取引先マスタ ======
 // yomi: ひらがな読み, romaji: ローマ字略称（アルファベット社名用）
 // 取引先マスタ（APIから取得）
-let CLIENT_LIST = [];
+let CLIENT_LIST = []; // [{name, reading}]
 async function loadClients() {
     try {
         const data = await fetch(API + '/api/clients').then(r => r.json());
@@ -398,7 +398,7 @@ async function loadClients() {
 
 // 半角カナ・全角カナ→ひらがな（NFKC正規化 + 全角カナ→ひらがな）
 function toSearchKey(s) {
-    const normalized = s.normalize('NFKC');
+    const normalized = (s || '').normalize('NFKC');
     return normalized.replace(/[ァ-ヶ]/g, c => String.fromCharCode(c.charCodeAt(0) - 0x60)).toLowerCase();
 }
 
@@ -414,16 +414,21 @@ function onClientInput(val) {
     if (!val || !val.trim()) { box.style.display = 'none'; return; }
     const q = toSearchKey(val.trim());
     const raw = val.trim().toLowerCase();
-    const filtered = CLIENT_LIST.filter(name => {
-        const key = toSearchKey(name);
-        return key.startsWith(q) || name.toLowerCase().includes(raw);
+    const filtered = CLIENT_LIST.filter(item => {
+        const name = item.name || item;
+        const reading = item.reading || '';
+        const nameKey = toSearchKey(name);
+        const readingKey = toSearchKey(reading);
+        return nameKey.startsWith(q) || readingKey.startsWith(q) ||
+               name.toLowerCase().includes(raw) || reading.toLowerCase().includes(raw);
     });
     if (filtered.length === 0) { box.style.display = 'none'; return; }
-    box.innerHTML = filtered.slice(0, 30).map(name =>
-        `<div onclick="selectClient(this)" data-name="${name.replace(/"/g,'&quot;')}"`+
-        ` style="padding:8px 12px;cursor:pointer;font-size:13px;border-bottom:1px solid #f0f0f0;"`+
-        ` onmouseover="this.style.background='#e8f4ff'" onmouseout="this.style.background=''">${name}</div>`
-    ).join('');
+    box.innerHTML = filtered.slice(0, 30).map(item => {
+        const name = item.name || item;
+        return `<div onclick="selectClient(this)" data-name="${name.replace(/"/g,'&quot;')}"` +
+               ` style="padding:8px 12px;cursor:pointer;font-size:13px;border-bottom:1px solid #f0f0f0;"` +
+               ` onmouseover="this.style.background='#e8f4ff'" onmouseout="this.style.background=''">${name}</div>`;
+    }).join('');
     // position: fixed でモーダルのoverflow-y:autoを回避
     const rect = input.getBoundingClientRect();
     box.style.position = 'fixed';
