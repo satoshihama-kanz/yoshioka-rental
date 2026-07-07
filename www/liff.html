@@ -246,7 +246,7 @@ function onLiffClientInput(el) {
     const filtered = liffClientList.filter(item => {
         const name = item.name || item;
         const reading = item.reading || '';
-        return toSearchKeyL(name).startsWith(q) || toSearchKeyL(reading).startsWith(q) ||
+        return toSearchKeyL(name).includes(q) || toSearchKeyL(reading).includes(q) ||
                name.toLowerCase().includes(raw) || reading.toLowerCase().includes(raw);
     });
     if (filtered.length === 0) { box.style.display = 'none'; return; }

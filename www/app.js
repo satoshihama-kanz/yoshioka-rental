@@ -419,7 +419,7 @@ function onClientInput(val) {
         const reading = item.reading || '';
         const nameKey = toSearchKey(name);
         const readingKey = toSearchKey(reading);
-        return nameKey.startsWith(q) || readingKey.startsWith(q) ||
+        return nameKey.includes(q) || readingKey.includes(q) ||
                name.toLowerCase().includes(raw) || reading.toLowerCase().includes(raw);
     });
     if (filtered.length === 0) { box.style.display = 'none'; return; }
