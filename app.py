@@ -2047,8 +2047,8 @@ def api_liff_submit():
     if 'region' in d and d['region']:
         update_fields.append('region=?')
         update_vals.append(d['region'])
-    # 返却時の所在地（京都/滋賀）から自動更新
-    elif status == '在庫' and state.get('location') in ('京都', '滋賀'):
+    # 所在地（京都/滋賀）が指定されたら常に更新
+    elif state.get('location') in ('京都', '滋賀'):
         update_fields.append('region=?')
         update_vals.append(state['location'])
     if update_fields:
