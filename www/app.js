@@ -260,9 +260,10 @@ function renderCalendar() {
     const sortKey = (document.getElementById('calendarSort') || {value:'number'}).value;
     const statusOrder = {'貸出中':0,'予約済':1,'車検中':2,'点検中':3,'修理中':4,'在庫':5,'':6};
 
-    // 在庫のみ → テーブル表示に切り替え
-    if (sortKey === 'stock') {
-        renderStockTable(todayStr);
+    // 在庫のみ（地域絞り込み含む）→ テーブル表示に切り替え
+    if (sortKey === 'stock' || sortKey === 'stock_kyoto' || sortKey === 'stock_shiga') {
+        const regionFilter = sortKey === 'stock_kyoto' ? '京都' : sortKey === 'stock_shiga' ? '滋賀' : null;
+        renderStockTable(todayStr, regionFilter);
         return;
     }
 
@@ -320,10 +321,11 @@ function renderCalendar() {
 }
 
 // ====== 在庫テーブル（在庫のみ選択時） ======
-function renderStockTable(todayStr) {
+function renderStockTable(todayStr, regionFilter) {
     const _ro = r => r === '京都' ? 0 : r === '滋賀' ? 1 : 2;
     const stockVehicles = filteredVehicles
-        .filter(v => getVehicleStatusOnDate(v.id, todayStr).status === '在庫')
+        .filter(v => getVehicleStatusOnDate(v.id, todayStr).status === '在庫'
+                  && (!regionFilter || v.region === regionFilter))
         .sort((a, b) => {
             const rd = _ro(a.region) - _ro(b.region);
             if (rd !== 0) return rd;
