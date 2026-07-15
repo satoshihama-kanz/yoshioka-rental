@@ -999,8 +999,10 @@ def register_event(v, status, state):
     msg = _build_line_msg(
         v['number'], v.get('car_type', ''), status, staff, client, start_d, end_d, category
     )
-    if mileage:  msg += f"\n走行距離: {mileage}km"
-    if remarks:  msg += f"\n備考: {remarks}"
+    extras = []
+    if mileage: extras.append(f"{mileage}ｷﾛ")
+    if remarks: extras.append(remarks)
+    if extras:  msg += ' ' + ' '.join(extras)
     return msg
 
 def ask_all_missing(state):
