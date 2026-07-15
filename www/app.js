@@ -201,7 +201,7 @@ function renderDashboard() {
     filteredVehicles.forEach(v => {
         const { status, event: ev } = getVehicleCurrentStatus(v.id);
         const color  = statusColor[status] || '#4CAF50';
-        const badge  = `<span style="background:${color};color:white;padding:2px 6px;border-radius:10px;font-size:11px;font-weight:bold;">${status}</span>`;
+        const badge  = `<span style="background:${color};color:white;padding:2px 5px;border-radius:8px;font-size:11px;font-weight:bold;">${status.charAt(0)}</span>`;
         const client = ev ? [ev.staff, ev.client].filter(Boolean).join(' / ') : '';
         const endDt  = ev && ev.end_date ? fmtDate(ev.end_date) : '';
         const icons  = statusIcons(ev, v);
@@ -266,24 +266,32 @@ function renderCalendar() {
         return;
     }
 
+    const regionOrder = r => r === '京都' ? 0 : r === '滋賀' ? 1 : 2;
     const sortedVehicles = [...filteredVehicles].sort((a, b) => {
+        const ra = regionOrder(a.region), rb = regionOrder(b.region);
         if (sortKey === 'status') {
             const sa = getVehicleStatusOnDate(a.id, todayStr).status;
             const sb = getVehicleStatusOnDate(b.id, todayStr).status;
             const diff = (statusOrder[sa] ?? 9) - (statusOrder[sb] ?? 9);
-            return diff !== 0 ? diff : a.number.localeCompare(b.number);
+            if (diff !== 0) return diff;
+            if (ra !== rb) return ra - rb;
+            return a.number.localeCompare(b.number);
         } else if (sortKey === 'type') {
+            if (ra !== rb) return ra - rb;
             const diff = (a.car_type || '').localeCompare(b.car_type || '');
             return diff !== 0 ? diff : a.number.localeCompare(b.number);
         } else {
+            if (ra !== rb) return ra - rb;
             return a.number.localeCompare(b.number);
         }
     });
 
     sortedVehicles.forEach(v => {
         html += `<tr>`;
+        const regionChar = v.region === '京都' ? '<span style="font-size:9px;color:#1565C0;font-weight:bold;">京</span>' :
+                           v.region === '滋賀' ? '<span style="font-size:9px;color:#2E7D32;font-weight:bold;">滋</span>' : '';
         html += `<td class="cal-vehicle-col" onclick="openDetail(${v.id})" style="cursor:pointer;">
-            ${v.car_category ? `<span class="cal-cat">${v.car_category}</span>` : ''}
+            ${regionChar}${v.car_category ? `<span class="cal-cat">${v.car_category}</span>` : ''}
             <span class="cal-vehicle-num">${v.number}</span>
             <span class="cal-vehicle-type">${v.car_type}</span>
         </td>`;
@@ -313,11 +321,13 @@ function renderCalendar() {
 
 // ====== 在庫テーブル（在庫のみ選択時） ======
 function renderStockTable(todayStr) {
+    const _ro = r => r === '京都' ? 0 : r === '滋賀' ? 1 : 2;
     const stockVehicles = filteredVehicles
         .filter(v => getVehicleStatusOnDate(v.id, todayStr).status === '在庫')
         .sort((a, b) => {
-            const ca = a.car_category || '';
-            const cb = b.car_category || '';
+            const rd = _ro(a.region) - _ro(b.region);
+            if (rd !== 0) return rd;
+            const ca = a.car_type || '', cb = b.car_type || '';
             return ca !== cb ? ca.localeCompare(cb) : a.number.localeCompare(b.number);
         });
 
@@ -350,7 +360,7 @@ function renderStockTable(todayStr) {
         // 車検警告
         const inspHtml = inspectionWarning(v.inspection_date);
 
-        const statusCell = `<span style="background:#4CAF50;color:white;padding:1px 5px;border-radius:8px;font-size:10px;font-weight:bold;">在庫</span>
+        const statusCell = `<span style="background:#4CAF50;color:white;padding:1px 5px;border-radius:8px;font-size:10px;font-weight:bold;">在</span>
             ${icons ? `<span style="margin-left:2px;font-size:10px;">${icons}</span>` : ''}
             ${inspHtml ? `<span style="margin-left:3px;">${inspHtml}</span>` : ''}`;
 

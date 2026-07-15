@@ -23,10 +23,8 @@
 </header>
 
 <div class="tabs">
-  <div class="tab active" onclick="showPage('dashboard')">📊 ダッシュボード</div>
-  <div class="tab" onclick="showPage('calendar')">📅 カレンダー</div>
-  <div class="tab" onclick="showPage('list')">📋 車両一覧</div>
-  <div class="tab" onclick="showPage('pending')" id="tab-pending">⚠️ 未処理 <span id="pendingBadge" style="background:#f44336;color:white;border-radius:10px;padding:1px 6px;font-size:11px;margin-left:4px;display:none">0</span></div>
+  <div class="tab active" onclick="showPage('dashboard')" style="font-size:11px;">📊 ﾀﾞｯｼｭﾎﾞｰﾄﾞ</div>
+  <div class="tab" onclick="showPage('calendar')" style="font-size:11px;">📅 ｶﾚﾝﾀﾞｰ</div>
 </div>
 
 <div class="filter-bar">
@@ -88,19 +86,6 @@
   </div>
 </div>
 
-<!-- 車両一覧 -->
-<div class="content page" id="page-list">
-  <div id="vehicleList" class="loading">読み込み中…</div>
-</div>
-
-<!-- 未処理メッセージ -->
-<div class="content page" id="page-pending">
-  <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;">
-    <h2 style="font-size:16px;color:#1a3a5c;">⚠️ 未処理メッセージ一覧</h2>
-    <span style="font-size:12px;color:#888;">LINEで自動処理できなかったメッセージです。確認後「処理済み」にしてください。</span>
-  </div>
-  <div id="pendingList" class="loading">読み込み中…</div>
-</div>
 
 <!-- 車両詳細パネル -->
 <div class="detail-panel" id="detailPanel">
@@ -205,6 +190,6 @@
 
 <div id="tooltip" class="tooltip" style="display:none;"></div>
 
-<script src="app.js?v=20260707a"></script>
+<script src="app.js?v=20260715a"></script>
 </body>
 </html>
