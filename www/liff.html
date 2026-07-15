@@ -89,7 +89,17 @@ select option[value=""]{color:#aaa}
       <button class="action-btn" onclick="selectAction('返却')" id="btn-返却">
         <span class="icon">✅</span>返却
       </button>
+      <button class="action-btn" onclick="selectAction('キャンセル')" id="btn-キャンセル" style="grid-column:1/-1;background:#fff3f3;border-color:#e57373;">
+        <span class="icon">❌</span>予約キャンセル
+      </button>
     </div>
+  </div>
+
+  <!-- キャンセル対象選択 -->
+  <div class="section hide" id="cancelSection">
+    <div class="section-title">🗑 取り消す予約を選択</div>
+    <div id="cancelList" style="display:flex;flex-direction:column;gap:8px;"></div>
+    <p id="cancelEmpty" class="hide" style="color:#888;font-size:13px;">先々の予約が見つかりません</p>
   </div>
 
   <!-- ③ 日付 -->
@@ -352,18 +362,22 @@ function selectAction(action) {
 
 function updateSections() {
   const a = selectedAction;
+  const isCancel = a === 'キャンセル';
+  // キャンセル選択肢
+  document.getElementById('cancelSection').classList.toggle('hide', !isCancel);
+  if (isCancel) loadCancelList();
   // 日付
-  document.getElementById('dateSection').classList.toggle('hide', false);
+  document.getElementById('dateSection').classList.toggle('hide', isCancel);
   // 終了日
-  document.getElementById('endDateWrap').classList.toggle('hide', a === '返却');
+  document.getElementById('endDateWrap').classList.toggle('hide', a === '返却' || isCancel);
   // 顧客名
-  document.getElementById('clientSection').classList.toggle('hide', a === '修理' || a === '返却');
+  document.getElementById('clientSection').classList.toggle('hide', a === '修理' || a === '返却' || isCancel);
   // 適用
-  document.getElementById('categorySection').classList.toggle('hide', a === '修理' || a === '返却');
+  document.getElementById('categorySection').classList.toggle('hide', a === '修理' || a === '返却' || isCancel);
   // 担当
-  document.getElementById('staffSection').classList.toggle('hide', false);
+  document.getElementById('staffSection').classList.toggle('hide', isCancel);
   // 距離
-  document.getElementById('mileageSection').classList.toggle('hide', a === '予約' || a === '修理');
+  document.getElementById('mileageSection').classList.toggle('hide', a === '予約' || a === '修理' || isCancel);
 }
 
 // 担当選択
@@ -379,14 +393,51 @@ function getStaff() {
   return sel;
 }
 
+let selectedCancelEventId = null;
+
+// キャンセル対象の予約一覧を読み込む
+async function loadCancelList() {
+  selectedCancelEventId = null;
+  const list = document.getElementById('cancelList');
+  const empty = document.getElementById('cancelEmpty');
+  list.innerHTML = '<p style="color:#888;font-size:13px;">読み込み中…</p>';
+  empty.classList.add('hide');
+  if (!selectedVehicleId) { list.innerHTML = ''; return; }
+  try {
+    const res = await fetch(`${API_BASE}/api/liff/events?vehicle_id=${selectedVehicleId}`);
+    const evs = await res.json();
+    list.innerHTML = '';
+    if (!evs.length) { empty.classList.remove('hide'); updateSubmitBtn(); return; }
+    evs.forEach(ev => {
+      const d = document.createElement('div');
+      d.style.cssText = 'padding:10px 14px;border:2px solid #ddd;border-radius:8px;cursor:pointer;font-size:13px;';
+      d.innerHTML = `<strong>${ev.status}</strong> ${ev.start_date||''}${ev.end_date ? '〜'+ev.end_date : '〜'}<br>
+        <span style="color:#555;">${ev.client||''} ${ev.staff||''}</span>`;
+      d.onclick = () => {
+        list.querySelectorAll('div').forEach(x => x.style.borderColor = '#ddd');
+        d.style.borderColor = '#e53935';
+        selectedCancelEventId = ev.id;
+        updateSubmitBtn();
+      };
+      list.appendChild(d);
+    });
+  } catch(e) { list.innerHTML = '<p style="color:red;font-size:13px;">読み込みエラー</p>'; }
+  updateSubmitBtn();
+}
+
 // 送信ボタン活性チェック
 function updateSubmitBtn() {
-  const ok = selectedVehicleId && selectedAction;
-  document.getElementById('submitBtn').disabled = !ok;
+  const isCancel = selectedAction === 'キャンセル';
+  const ok = isCancel ? (selectedVehicleId && selectedCancelEventId) : (selectedVehicleId && selectedAction);
+  const btn = document.getElementById('submitBtn');
+  btn.disabled = !ok;
+  btn.textContent = isCancel ? '取り消す' : '登録する';
+  btn.style.background = isCancel ? '#e53935' : '';
 }
 
 // 送信
 async function submitForm() {
+  if (selectedAction === 'キャンセル') { await cancelEvent(); return; }
   const btn = document.getElementById('submitBtn');
   btn.disabled  = true;
   btn.textContent = '送信中…';
@@ -468,8 +519,52 @@ function resetForm() {
   document.querySelectorAll('.action-btn').forEach(b => b.classList.remove('selected'));
   selectedVehicleId = null;
   selectedAction    = null;
+  selectedCancelEventId = null;
   updateSections();
 }
+
+// キャンセル実行
+async function cancelEvent() {
+  const btn = document.getElementById('submitBtn');
+  btn.disabled = true;
+  btn.textContent = '取り消し中…';
+  const result = document.getElementById('result');
+  result.style.display = 'none';
+  try {
+    const res = await fetch(`${API_BASE}/api/liff/cancel`, {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({ key: '3155', event_id: selectedCancelEventId }),
+    });
+    const data = await res.json();
+    if (res.ok && data.ok) {
+      result.className = 'result success';
+      result.textContent = '✅ 予約を取り消しました';
+      result.style.display = 'block';
+      btn.textContent = '取り消し完了 ✅';
+      btn.style.background = '#4CAF50';
+      setTimeout(() => { resetForm(); btn.textContent = '登録する'; btn.style.background = ''; btn.disabled = true; }, 3000);
+    } else {
+      throw new Error(data.error || '取り消しに失敗しました');
+    }
+  } catch(e) {
+    result.className = 'result error';
+    result.textContent = '❌ エラー: ' + e.message;
+    result.style.display = 'block';
+    btn.disabled = false;
+    btn.textContent = '取り消す';
+  }
+}
+
+// URLパラメータから車番を自動入力
+(function() {
+  const params = new URLSearchParams(window.location.search);
+  const vnum = params.get('vehicle');
+  if (vnum) {
+    const el = document.getElementById('vehicleNumber');
+    if (el) { el.value = vnum; lookupVehicle(); }
+  }
+})();
 </script>
 </body>
 </html>

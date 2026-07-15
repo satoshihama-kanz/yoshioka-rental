@@ -2071,6 +2071,54 @@ def api_liff_submit():
 
     return jsonify({'ok': True, 'message': msg, 'line_sent': line_sent})
 
+@app.route('/api/liff/events')
+def api_liff_events():
+    """車両の将来イベント一覧（LIFF用・キャンセル選択）"""
+    vehicle_id = request.args.get('vehicle_id', '')
+    if not vehicle_id:
+        return jsonify([])
+    today = today_jst()
+    conn = get_db()
+    rows = conn.execute(
+        '''SELECT id, status, start_date, end_date, client, staff FROM events
+           WHERE vehicle_id=? AND status IN ('予約済','貸出中')
+             AND (end_date IS NULL OR end_date >= ?)
+           ORDER BY start_date''',
+        (vehicle_id, today)
+    ).fetchall()
+    conn.close()
+    return jsonify([dict(r) for r in rows])
+
+@app.route('/api/liff/cancel', methods=['POST'])
+def api_liff_cancel():
+    """予約キャンセル（LIFF用）"""
+    d   = request.get_json() or {}
+    key = d.get('key', '')
+    if key != ADMIN_PASS:
+        return jsonify({'error': 'Unauthorized'}), 401
+    event_id = d.get('event_id')
+    if not event_id:
+        return jsonify({'error': 'event_id required'}), 400
+    conn = get_db()
+    ev = conn.execute('SELECT * FROM events WHERE id=?', (event_id,)).fetchone()
+    if not ev:
+        conn.close()
+        return jsonify({'error': 'Event not found'}), 404
+    v = conn.execute('SELECT * FROM vehicles WHERE id=?', (ev['vehicle_id'],)).fetchone()
+    conn.execute('DELETE FROM events WHERE id=?', (event_id,))
+    conn.commit()
+    conn.close()
+    # LINE通知
+    num = v['number'] if v else ''
+    ctype = v['car_type'] if v else ''
+    client = ev['client'] or ''
+    start_d = ev['start_date'] or ''
+    msg = f'🚗 {num} {ctype} ❌キャンセル\n{client}\n{_fmt_date(start_d)}〜 取り消し'
+    group_id = os.environ.get('LINE_GROUP_ID', '')
+    if LINE_CHANNEL_TOKEN and group_id:
+        send_line_push(group_id, msg)
+    return jsonify({'ok': True})
+
 # ── 車両マスタ一括追加（管理者専用） ────────────────────────
 @app.route('/api/admin/add-vehicles', methods=['POST'])
 def admin_add_vehicles():

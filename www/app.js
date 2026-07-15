@@ -235,8 +235,12 @@ function renderCalendar() {
     }
 
     const endDate = dates[dates.length - 1];
-    document.getElementById('calendarRangeLabel').textContent =
-        `${startDate.getFullYear()}/${startDate.getMonth()+1}/${startDate.getDate()} ～ ${endDate.getFullYear()}/${endDate.getMonth()+1}/${endDate.getDate()}`;
+    const sy = String(startDate.getFullYear()).slice(2), sm = startDate.getMonth()+1, sd = startDate.getDate();
+    const ey = String(endDate.getFullYear()).slice(2),   em = endDate.getMonth()+1,   ed = endDate.getDate();
+    const rangeLabel = sy === ey
+        ? `${sy}/${sm}/${sd} - ${em}/${ed}`
+        : `${sy}/${sm}/${sd} - ${ey}/${em}/${ed}`;
+    document.getElementById('calendarRangeLabel').textContent = rangeLabel;
 
     const todayStr = today();
     const statusClass = { '在庫': 'available', '貸出中': 'rented', '予約済': 'reserved', '車検中': 'inspection', '点検中': 'inspection', '修理中': 'repair' };
@@ -564,7 +568,7 @@ function renderList() {
             <td style="padding:9px 12px;font-size:13px;">${ev && ev.end_date ? fmtDateFull(ev.end_date) : ''}</td>
             <td style="padding:9px 12px;font-size:12px;color:#FF9800;">${next}</td>
             <td style="padding:9px 12px;font-size:12px;color:#888;">${v.inspection_date ? fmtDateFull(v.inspection_date) : ''}</td>
-            <td style="padding:9px 12px;"><button class="btn btn-primary btn-sm" onclick="event.stopPropagation();openAddModal(${v.id})">＋登録</button></td>
+            <td style="padding:9px 12px;"><button class="btn btn-primary btn-sm" onclick="event.stopPropagation();openLiffForm(${v.id})">📝 登録</button></td>
         </tr>`;
     });
     html += '</tbody></table>';
@@ -616,6 +620,13 @@ function renderDetail(vehicleId) {
             ${e.notes ? `<div class="event-notes">📝 ${e.notes}</div>` : ''}
         </div>`;
     }).join('');
+}
+
+// ====== LIFFフォームを開く ======
+function openLiffForm(vehicleId) {
+    const v = vehicleId ? vehicles.find(x => x.id == vehicleId) : null;
+    const url = v ? `/liff?vehicle=${encodeURIComponent(v.number)}` : '/liff';
+    window.open(url, '_blank');
 }
 
 // ====== 状態登録モーダル ======

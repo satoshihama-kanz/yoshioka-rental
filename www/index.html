@@ -27,25 +27,22 @@
   <div class="tab" onclick="showPage('calendar')" style="font-size:11px;">📅 ｶﾚﾝﾀﾞｰ</div>
 </div>
 
-<div class="filter-bar">
-  <label>車種</label>
-  <select id="filterType" onchange="applyFilters()">
-    <option value="">すべて</option>
+<div class="filter-bar" style="padding:6px 12px;gap:6px;">
+  <select id="filterType" onchange="applyFilters()" style="font-size:12px;padding:4px 6px;">
+    <option value="">車種：すべて</option>
   </select>
-  <label>状態</label>
-  <select id="filterStatus" onchange="applyFilters()">
-    <option value="">すべて</option>
-    <option value="在庫">在庫（空き）</option>
+  <select id="filterStatus" onchange="applyFilters()" style="font-size:12px;padding:4px 6px;">
+    <option value="">状態：すべて</option>
+    <option value="在庫">在庫</option>
     <option value="貸出中">貸出中</option>
     <option value="予約済">予約済</option>
     <option value="車検中">車検中</option>
     <option value="点検中">点検中</option>
     <option value="修理中">修理中</option>
   </select>
-  <label>番号/車種検索</label>
-  <input type="text" id="filterSearch" placeholder="番号・車種名…" oninput="applyFilters()" style="width:160px">
-  <button class="btn btn-outline btn-sm" onclick="clearFilters()">クリア</button>
-  <span id="filterCount" style="font-size:12px;color:#888;margin-left:8px;"></span>
+  <input type="text" id="filterSearch" placeholder="番号・車種名…" oninput="applyFilters()" style="width:120px;font-size:12px;padding:4px 6px;">
+  <button class="btn btn-outline btn-sm" onclick="clearFilters()" style="font-size:11px;padding:3px 8px;">クリア</button>
+  <span id="filterCount" style="font-size:11px;color:#888;"></span>
 </div>
 
 <!-- ダッシュボード -->
@@ -58,30 +55,30 @@
 
 <!-- カレンダー -->
 <div class="content page" id="page-calendar">
-  <div style="display:flex;align-items:center;gap:12px;margin-bottom:10px;flex-wrap:wrap;">
-    <button class="btn btn-outline btn-sm" onclick="calendarOffset -= 14; renderCalendar()">◀ 前へ</button>
-    <span id="calendarRangeLabel" style="font-size:13px;color:#555;"></span>
-    <button class="btn btn-outline btn-sm" onclick="calendarOffset += 14; renderCalendar()">次へ ▶</button>
-    <button class="btn btn-outline btn-sm" onclick="calendarOffset = 0; renderCalendar()">今日</button>
-    <div style="margin-left:auto;display:flex;align-items:center;gap:8px;">
-      <label style="font-size:13px;color:#555;font-weight:bold;">並び替え：</label>
-      <select id="calendarSort" onchange="renderCalendar()" style="font-size:13px;padding:4px 8px;border:1px solid #ccc;border-radius:6px;">
+  <div style="display:flex;align-items:center;gap:6px;margin-bottom:6px;flex-wrap:nowrap;">
+    <button class="btn btn-outline btn-sm" onclick="calendarOffset -= 14; renderCalendar()" style="padding:2px 7px;font-size:13px;">◀</button>
+    <span id="calendarRangeLabel" style="font-size:12px;color:#555;white-space:nowrap;"></span>
+    <button class="btn btn-outline btn-sm" onclick="calendarOffset += 14; renderCalendar()" style="padding:2px 7px;font-size:13px;">▶</button>
+    <span style="margin-left:auto;display:flex;align-items:center;gap:4px;">
+      <label style="font-size:11px;color:#555;">並替：</label>
+      <select id="calendarSort" onchange="renderCalendar()" style="font-size:11px;padding:2px 4px;border:1px solid #ccc;border-radius:6px;">
         <option value="number">🔢 車番順</option>
         <option value="status">📊 稼働状況別</option>
         <option value="type">🚗 車種別</option>
         <option value="stock">🟢 在庫のみ</option>
-        <option value="stock_kyoto">🔵 在庫 - 京都</option>
-        <option value="stock_shiga">🟩 在庫 - 滋賀</option>
+        <option value="stock_kyoto">🔵 在庫-京都</option>
+        <option value="stock_shiga">🟩 在庫-滋賀</option>
       </select>
-    </div>
+    </span>
   </div>
-  <div class="cal-legend">
-    <div class="cal-legend-item"><div class="cal-legend-box" style="background:#E8F5E9"></div>在庫</div>
-    <div class="cal-legend-item"><div class="cal-legend-box" style="background:#BBDEFB"></div>貸出中</div>
-    <div class="cal-legend-item"><div class="cal-legend-box" style="background:#FFE0B2"></div>予約済</div>
-    <div class="cal-legend-item"><div class="cal-legend-box" style="background:#E1BEE7"></div>車検/点検</div>
-    <div class="cal-legend-item"><div class="cal-legend-box" style="background:#FFCDD2"></div>修理中</div>
-    <div class="cal-legend-item"><div class="cal-legend-box" style="background:#F5F5F5"></div>未登録</div>
+  <div class="cal-legend" style="gap:8px;margin-bottom:6px;flex-wrap:nowrap;">
+    <div class="cal-legend-item" style="font-size:10px;"><div class="cal-legend-box" style="background:#E8F5E9;width:12px;height:12px;"></div>在庫</div>
+    <div class="cal-legend-item" style="font-size:10px;"><div class="cal-legend-box" style="background:#BBDEFB;width:12px;height:12px;"></div>貸出</div>
+    <div class="cal-legend-item" style="font-size:10px;"><div class="cal-legend-box" style="background:#FFE0B2;width:12px;height:12px;"></div>予約</div>
+    <div class="cal-legend-item" style="font-size:10px;"><div class="cal-legend-box" style="background:#E1BEE7;width:12px;height:12px;"></div>車検</div>
+    <div class="cal-legend-item" style="font-size:10px;"><div class="cal-legend-box" style="background:#E1BEE7;width:12px;height:12px;"></div>点検</div>
+    <div class="cal-legend-item" style="font-size:10px;"><div class="cal-legend-box" style="background:#FFCDD2;width:12px;height:12px;"></div>修理</div>
+    <div class="cal-legend-item" style="font-size:10px;"><div class="cal-legend-box" style="background:#F5F5F5;width:12px;height:12px;"></div>未登録</div>
   </div>
   <div class="calendar-container">
     <div id="calendarView" class="loading">読み込み中…</div>
@@ -106,7 +103,7 @@
     <div class="detail-section">
       <h3>現在の状態・予定</h3>
       <div id="detailEvents"></div>
-      <button class="btn btn-primary btn-sm" onclick="openAddModal(currentDetailVehicleId)" style="margin-top:8px;width:100%;">＋ 状態を追加</button>
+      <button class="btn btn-primary btn-sm" onclick="openLiffForm(currentDetailVehicleId)" style="margin-top:8px;width:100%;">📝 入力フォームを開く</button>
     </div>
   </div>
 </div>
@@ -192,6 +189,6 @@
 
 <div id="tooltip" class="tooltip" style="display:none;"></div>
 
-<script src="app.js?v=20260715b"></script>
+<script src="app.js?v=20260715c"></script>
 </body>
 </html>
