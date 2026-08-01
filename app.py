@@ -2047,10 +2047,15 @@ def api_liff_submit():
     if 'region' in d and d['region']:
         update_fields.append('region=?')
         update_vals.append(d['region'])
-    # 所在地（京都/滋賀）が指定されたら常に更新
-    elif state.get('location') in ('京都', '滋賀'):
-        update_fields.append('region=?')
-        update_vals.append(state['location'])
+    # 所在地に「京都」「滋賀」が含まれれば region を更新（「京都本社」「滋賀支店」なども対応）
+    elif state.get('location'):
+        loc = state['location']
+        if '京都' in loc:
+            update_fields.append('region=?')
+            update_vals.append('京都')
+        elif '滋賀' in loc:
+            update_fields.append('region=?')
+            update_vals.append('滋賀')
     if update_fields:
         conn2 = get_db()
         conn2.execute(f"UPDATE vehicles SET {','.join(update_fields)} WHERE id=?",
