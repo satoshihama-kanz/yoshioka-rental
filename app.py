@@ -2397,6 +2397,21 @@ def master_staff_delete(sid):
     conn.close()
     return jsonify({'ok': True})
 
+# ── LINE任意メッセージ送信（管理者専用） ───────────────────────
+@app.route('/api/admin/line-push', methods=['POST'])
+def admin_line_push():
+    key = request.headers.get('X-Admin-Key','') or (request.get_json() or {}).get('key','')
+    if key != ADMIN_PASS:
+        return jsonify({'error': 'Unauthorized'}), 401
+    msg = (request.get_json() or {}).get('message','')
+    if not msg:
+        return jsonify({'error': 'message required'}), 400
+    group_id = get_setting('line_group_id')
+    if not group_id or not LINE_CHANNEL_TOKEN:
+        return jsonify({'error': 'LINE not configured'}), 500
+    send_line_push(group_id, msg)
+    return jsonify({'ok': True})
+
 # ── 起動 ─────────────────────────────────────────────────
 init_db()
 if __name__ == '__main__':
