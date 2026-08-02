@@ -2254,7 +2254,9 @@ def admin_import_grid():
     items = body.get('items') or []
     conn = get_db()
     c = conn.cursor()
-    c.execute("DELETE FROM events WHERE category='Excel取込'")
+    reset = body.get('reset', True)
+    if reset:
+        c.execute("DELETE FROM events WHERE category='Excel取込'")
     now = datetime.now(JST).strftime('%Y-%m-%d %H:%M:%S')
     inserted, not_found = 0, []
     for it in items:
@@ -2270,7 +2272,7 @@ def admin_import_grid():
         inserted += 1
     conn.commit()
     conn.close()
-    return jsonify({'inserted': inserted, 'deleted_prev': True,
+    return jsonify({'inserted': inserted, 'reset': bool(reset),
                     'not_found_count': len(not_found), 'not_found': not_found[:20]})
 
 # ── LINE Webhook（認証不要・公開） ─────────────────────────
