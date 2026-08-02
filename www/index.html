@@ -18,6 +18,7 @@
     <button class="btn btn-success btn-hdr" onclick="openAddModal()">＋ 登録</button>
     <button class="btn btn-hdr" style="background:#25D366;color:white;" onclick="sendFormLinkToLine()" title="グループLINEにフォームボタンを送信">📌 LINE</button>
     <button class="btn btn-hdr" style="background:#FF9800;color:white;" onclick="setupRichMenu()" title="LINEリッチメニュー設定">⚙️</button>
+    <button class="btn btn-hdr" style="background:#3F51B5;color:white;font-size:10px;padding:4px 7px;" onclick="openMorningPreview()" title="朝一一斉ラインの内容を事前確認">朝一ﾗｲﾝﾌﾟﾚﾋﾞｭｰ</button>
     <a href="/master" class="btn btn-hdr" style="background:#607D8B;color:white;text-decoration:none;">🗂 マスタ</a>
   </div>
 </header>
@@ -143,14 +144,20 @@
         <label>担当営業</label>
         <select id="formStaff">
           <option value="">（選択）</option>
-          <option>平田</option>
-          <option>内田</option>
-          <option>山本圭</option>
-          <option>吉岡</option>
-          <option>則本</option>
-          <option>市川</option>
-          <option>福田</option>
-          <option>奥谷</option>
+          <optgroup label="京都">
+            <option>平田弘子</option>
+            <option>内田麻鈴</option>
+            <option>山本圭太</option>
+            <option>吉岡佑真</option>
+            <option>藤田頼人</option>
+            <option>北川舞花</option>
+          </optgroup>
+          <optgroup label="滋賀">
+            <option>福田竜也</option>
+            <option>奥谷慎太郎</option>
+            <option>川上那歩</option>
+            <option>田中奈々実</option>
+          </optgroup>
         </select>
       </div>
       <div class="form-2col">
@@ -187,8 +194,26 @@
   </div>
 </div>
 
+<!-- 朝一ラインプレビュー -->
+<div class="modal-overlay" id="morningModal">
+  <div class="modal" style="max-width:520px;">
+    <h2 style="font-size:15px;">朝一ﾗｲﾝﾌﾟﾚﾋﾞｭｰ</h2>
+    <div style="display:flex;align-items:center;gap:6px;margin-bottom:8px;flex-wrap:wrap;">
+      <label style="font-size:11px;color:#555;">対象日</label>
+      <input type="date" id="morningDate" onchange="loadMorningPreview()" style="font-size:12px;padding:3px 6px;">
+      <button class="btn btn-outline btn-sm" onclick="loadMorningPreview()" style="font-size:11px;padding:3px 8px;">再読込</button>
+      <span id="morningInfo" style="font-size:11px;color:#888;"></span>
+    </div>
+    <pre id="morningText" style="background:#F7F7F7;border:1px solid #e0e0e0;border-radius:6px;padding:10px;font-size:12px;line-height:1.6;white-space:pre-wrap;word-break:break-all;max-height:55vh;overflow-y:auto;margin:0;font-family:inherit;">読み込み中…</pre>
+    <div class="modal-actions">
+      <button class="btn btn-outline" onclick="closeMorningPreview()">閉じる</button>
+      <button class="btn btn-success" onclick="sendMorningNow()">今すぐ送信</button>
+    </div>
+  </div>
+</div>
+
 <div id="tooltip" class="tooltip" style="display:none;"></div>
 
-<script src="app.js?v=20260715c"></script>
+<script src="app.js?v=20260803a"></script>
 </body>
 </html>

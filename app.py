@@ -1637,94 +1637,113 @@ def api_pending_resolve(pid):
     return jsonify({'ok': True})
 
 # ── 朝の一斉報告 ────────────────────────────────────────────
-MORNING_STAFF = [
-    '平田弘子','内田麻鈴','山本圭太','吉岡佑真','市川久登',
-    '奥谷慎太郎','福田竜也','川上那歩','田中杏果','田中奈々実',
-]
+MORNING_STAFF_KYOTO = ['平田弘子','内田麻鈴','山本圭太','吉岡佑真','藤田頼人','北川舞花']
+MORNING_STAFF_SHIGA = ['福田竜也','奥谷慎太郎','川上那歩','田中奈々実']
+MORNING_STAFF = MORNING_STAFF_KYOTO + MORNING_STAFF_SHIGA
+_STAFF_REGION = ({s: '京都' for s in MORNING_STAFF_KYOTO} |
+                 {s: '滋賀' for s in MORNING_STAFF_SHIGA})
+
+# 終了日なしの非在庫イベントをいつまで有効とみなすか
+_STALE_DAYS = 60
 
 def match_staff(ev_staff):
-    """イベントの担当者フィールドをスタッフリストにマッチング"""
+    """イベントの担当者フィールドをスタッフマスタにマッチング"""
     if not ev_staff: return 'その他'
     for s in MORNING_STAFF:
         if ev_staff in s or s in ev_staff:
             return s
     return ev_staff
 
-def build_morning_report():
-    today = today_jst()
-    conn  = get_db()
+def _period_label(ev):
+    """'7/30〜' 形式。単日なら '7/30'"""
+    s = _fmt_date(ev.get('start_date') or '')
+    if not s: return ''
+    e = ev.get('end_date') or ''
+    if e and e == ev.get('start_date'):
+        return s
+    return s + '～'
 
-    vehicles = conn.execute(
-        'SELECT * FROM vehicles ORDER BY CAST(number AS INTEGER)'
-    ).fetchall()
+def resolve_vehicle_states(date=None):
+    """指定日時点の全車両の状態を確定する。
 
-    # 今日アクティブなイベント（最新1件/車両）
-    active = {}
-    for r in conn.execute(
-        '''SELECT e.*, v.number as vnum, v.car_type as vtype
-           FROM events e JOIN vehicles v ON e.vehicle_id=v.id
-           WHERE e.start_date<=? AND (e.end_date IS NULL OR e.end_date>=?)
-             AND e.status != "在庫"
-           ORDER BY e.start_date DESC''', (today, today)
-    ).fetchall():
-        if r['vehicle_id'] not in active:
-            active[r['vehicle_id']] = dict(r)
+    各車両につき「その日にかかっているイベント」のうち登録が最も新しい1件を採用
+    （＝新しい予約・修正が常に優先）。該当なしなら在庫扱い。
+    """
+    d = date or today_jst()
+    conn = get_db()
+    vehicles = [dict(r) for r in conn.execute(
+        'SELECT * FROM vehicles ORDER BY CAST(number AS INTEGER)').fetchall()]
+    rows = conn.execute(
+        '''SELECT * FROM events
+           WHERE start_date<=? AND (end_date IS NULL OR end_date>=?)
+           ORDER BY created_at DESC, id DESC''', (d, d)).fetchall()
     conn.close()
 
-    stock, reserves, maint = [], {}, []
+    stale_before = (datetime.strptime(d, '%Y-%m-%d') - timedelta(days=_STALE_DAYS)).strftime('%Y-%m-%d')
+    latest = {}
+    for r in rows:
+        r = dict(r)
+        # 終了日なしのまま放置された古い貸出/予約は無視する
+        if (not r.get('end_date')) and r.get('status') != '在庫' \
+           and (r.get('start_date') or '') < stale_before:
+            continue
+        latest.setdefault(r['vehicle_id'], r)
+
+    out = []
     for v in vehicles:
-        v = dict(v)
-        ev = active.get(v['id'])
-        if ev is None:
-            stock.append(v)
-        elif ev['status'] == '予約済':
-            staff = match_staff(ev.get('staff',''))
-            reserves.setdefault(staff, []).append((v, ev))
-        elif ev['status'] in ('車検中','点検中','修理中'):
-            maint.append((v, ev))
+        ev = latest.get(v['id'])
+        status = (ev or {}).get('status') or '在庫'
+        out.append({'vehicle': v, 'event': ev, 'status': status})
+    return out
 
-    today_dt = datetime.strptime(today, '%Y-%m-%d')
-    lines = [f"おはようございます🚗\n{today_dt.month}月{today_dt.day}日 車両稼働状況\n"]
+def build_morning_report(date=None):
+    d = date or today_jst()
+    states = resolve_vehicle_states(d)
 
-    # 在庫
-    lines.append("■■■　在庫　■■■")
-    if stock:
-        for v in stock:
-            lines.append(f"{v['number']} {v['car_type']}")
-    else:
-        lines.append("（在庫なし）")
+    stock = {'京都': [], '滋賀': []}
+    resv  = {'京都': {}, '滋賀': {}}
+    for st in states:
+        v, ev, status = st['vehicle'], st['event'], st['status']
+        vregion = v.get('region') if v.get('region') in ('京都', '滋賀') else '京都'
+        if status == '在庫':
+            loc = (ev or {}).get('location') or ''
+            region = '滋賀' if '滋賀' in loc else ('京都' if '京都' in loc else vregion)
+            stock[region].append((v, ev))
+        elif status == '予約済':
+            staff  = match_staff((ev or {}).get('staff', ''))
+            region = _STAFF_REGION.get(staff, vregion)
+            resv[region].setdefault(staff, []).append((v, ev))
 
-    # 予約
-    lines.append("\n■■■　予約　■■■")
-    shown = set()
-    for staff in MORNING_STAFF:
-        lines.append(f"\n【{staff}】")
-        shown.add(staff)
-        if staff in reserves:
-            for v, ev in reserves[staff]:
-                lines.append(f"{v['number']} {v['car_type']}")
-                parts = []
-                if ev.get('start_date'):
-                    d = datetime.strptime(ev['start_date'], '%Y-%m-%d')
-                    parts.append(f"{d.month}月{d.day}日〜")
-                if ev.get('client'):  parts.append(ev['client'])
-                if ev.get('category'): parts.append(ev['category'])
-                if parts: lines.append(f"({' '.join(parts)})")
-    # リスト外の担当者
-    for staff, items in reserves.items():
-        if staff not in shown:
-            lines.append(f"\n【{staff}】")
+    dt = datetime.strptime(d, '%Y-%m-%d')
+    lines = [f'【{dt.month}/{dt.day} 朝一 在庫・予約】', '']
+
+    for region, flag, order in (('京都', '🔵', MORNING_STAFF_KYOTO),
+                                ('滋賀', '🟢', MORNING_STAFF_SHIGA)):
+        items = stock[region]
+        lines.append(f'{flag}{region} 在庫 {len(items)}台')
+        if items:
             for v, ev in items:
-                lines.append(f"{v['number']} {v['car_type']}")
+                lines.append(f"・{v['car_type']} {v['number']}".rstrip())
+        else:
+            lines.append('（在庫なし）')
 
-    # 車検・修理・点検
-    lines.append("\n■■■　車検・修理・点検　■■■")
-    if maint:
-        for v, ev in maint:
-            note = ev.get('notes') or ev.get('status','')
-            lines.append(f"{v['number']} {v['car_type']}（{note}）")
-    else:
-        lines.append("（なし）")
+        lines += ['', f'{flag}{region} 予約']
+        names = order + [s for s in resv[region] if s not in order]
+        first = True
+        for s in names:
+            if s not in resv[region]:
+                continue
+            if not first: lines.append('')
+            lines.append(f'【{s}】')
+            for v, ev in resv[region][s]:
+                parts = [f"・{v['car_type']}", v['number'], _period_label(ev)]
+                if ev.get('client'): parts.append(ev['client'])
+                lines.append(' '.join(p for p in parts if p))
+            first = False
+        if first:
+            lines.append('（予約なし）')
+        if region == '京都':
+            lines += ['', '']
 
     return '\n'.join(lines)
 
@@ -1733,12 +1752,31 @@ def api_morning_report():
     key = request.headers.get('X-Admin-Key','') or request.args.get('key','')
     if key != ADMIN_PASS:
         return jsonify({'error': 'Unauthorized'}), 401
-    msg      = build_morning_report()
+    msg      = build_morning_report(request.args.get('date') or None)
     group_id = get_setting('line_group_id')
     if group_id and LINE_CHANNEL_TOKEN:
         send_line_push(group_id, msg)
-        return jsonify({'sent': True})
-    return jsonify({'sent': False, 'reason': 'group_id or token not set'})
+        return jsonify({'sent': True, 'message': msg})
+    return jsonify({'sent': False, 'reason': 'group_id or token not set', 'message': msg})
+
+@app.route('/api/morning-report/preview', methods=['GET'])
+@login_required
+def api_morning_report_preview():
+    """送信せずに本文だけ返す（前夜の事前確認用）"""
+    d = request.args.get('date') or today_jst()
+    return jsonify({'date': d, 'message': build_morning_report(d)})
+
+@app.route('/api/morning-report/send', methods=['POST'])
+@login_required
+def api_morning_report_send():
+    """プレビュー画面からの手動送信"""
+    body = request.get_json() or {}
+    msg  = body.get('message') or build_morning_report(body.get('date') or None)
+    group_id = get_setting('line_group_id')
+    if not group_id or not LINE_CHANNEL_TOKEN:
+        return jsonify({'error': 'LINE not configured'}), 500
+    send_line_push(group_id, msg)
+    return jsonify({'ok': True})
 
 @app.route('/api/pending/remind', methods=['GET', 'POST'])
 def api_pending_remind():
@@ -2200,6 +2238,40 @@ def admin_import_status():
     conn.close()
     return jsonify({'inserted': inserted, 'not_found_count': len(not_found),
                     'not_found': not_found[:20]})
+
+# ── エクセル現況の一括取込（管理者専用） ────────────────────
+@app.route('/api/admin/import-grid', methods=['POST'])
+def admin_import_grid():
+    """エクセルの日付グリッドから期間付きイベントを一括登録する。
+
+    既存の 'Excel取込' イベントのみ入替え、社員が登録した実データは残す。
+    payload: [{number, status, start_date, end_date, staff, client, notes}, ...]
+    """
+    key = request.headers.get('X-Admin-Key','') or (request.get_json(silent=True) or {}).get('key','')
+    if key != ADMIN_PASS:
+        return jsonify({'error': 'Unauthorized'}), 401
+    body  = request.get_json() or {}
+    items = body.get('items') or []
+    conn = get_db()
+    c = conn.cursor()
+    c.execute("DELETE FROM events WHERE category='Excel取込'")
+    now = datetime.now(JST).strftime('%Y-%m-%d %H:%M:%S')
+    inserted, not_found = 0, []
+    for it in items:
+        v = c.execute('SELECT id FROM vehicles WHERE number=?', (str(it['number']),)).fetchone()
+        if not v:
+            not_found.append(it['number']); continue
+        c.execute('''INSERT INTO events
+            (vehicle_id,status,start_date,end_date,staff,client,category,notes,created_at,location)
+            VALUES (?,?,?,?,?,?,?,?,?,?)''',
+            (v[0], it['status'], it.get('start_date'), it.get('end_date'),
+             it.get('staff',''), it.get('client',''), 'Excel取込',
+             it.get('notes',''), now, it.get('location','')))
+        inserted += 1
+    conn.commit()
+    conn.close()
+    return jsonify({'inserted': inserted, 'deleted_prev': True,
+                    'not_found_count': len(not_found), 'not_found': not_found[:20]})
 
 # ── LINE Webhook（認証不要・公開） ─────────────────────────
 @app.route('/webhook/line', methods=['POST'])

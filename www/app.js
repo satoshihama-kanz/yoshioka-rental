@@ -769,3 +769,50 @@ async function sendFormLinkToLine() {
 }
 
 init();
+
+// ── 朝一ﾗｲﾝﾌﾟﾚﾋﾞｭｰ ──────────────────────────────────────────
+function openMorningPreview() {
+    const el = document.getElementById('morningDate');
+    if (!el.value) {
+        const now = new Date(Date.now() + 9 * 3600 * 1000);
+        el.value = now.toISOString().slice(0, 10);
+    }
+    document.getElementById('morningModal').classList.add('open');
+    loadMorningPreview();
+}
+
+function closeMorningPreview() {
+    document.getElementById('morningModal').classList.remove('open');
+}
+
+async function loadMorningPreview() {
+    const box = document.getElementById('morningText');
+    const info = document.getElementById('morningInfo');
+    box.textContent = '読み込み中…';
+    info.textContent = '';
+    try {
+        const d = document.getElementById('morningDate').value;
+        const r = await fetch('/api/morning-report/preview?date=' + encodeURIComponent(d));
+        if (!r.ok) throw new Error(r.status);
+        const j = await r.json();
+        box.textContent = j.message;
+        info.textContent = j.message.length + '文字';
+    } catch (e) {
+        box.textContent = '❌ 取得に失敗しました';
+    }
+}
+
+async function sendMorningNow() {
+    if (!confirm('この内容でグループLINEに送信します。よろしいですか？')) return;
+    try {
+        const r = await fetch('/api/morning-report/send', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ message: document.getElementById('morningText').textContent })
+        });
+        alert(r.ok ? '✅ 送信しました' : '❌ 送信に失敗しました');
+        if (r.ok) closeMorningPreview();
+    } catch (e) {
+        alert('❌ 通信エラー');
+    }
+}
