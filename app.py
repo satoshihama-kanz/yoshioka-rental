@@ -2260,7 +2260,13 @@ def admin_import_grid():
     now = datetime.now(JST).strftime('%Y-%m-%d %H:%M:%S')
     inserted, not_found = 0, []
     for it in items:
-        v = c.execute('SELECT id FROM vehicles WHERE number=?', (str(it['number']),)).fetchone()
+        v = None
+        # 同じ車番が複数存在する（分類番号違い）ため、まず登録番号全体で照合
+        if it.get('full_number'):
+            v = c.execute('SELECT id FROM vehicles WHERE REPLACE(full_number," ","")=?',
+                          (str(it['full_number']).replace(' ', ''),)).fetchone()
+        if not v:
+            v = c.execute('SELECT id FROM vehicles WHERE number=?', (str(it['number']),)).fetchone()
         if not v:
             not_found.append(it['number']); continue
         c.execute('''INSERT INTO events
