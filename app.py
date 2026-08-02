@@ -1702,10 +1702,14 @@ def build_morning_report(date=None):
 
     stock = {'京都': [], '滋賀': []}
     resv  = {'京都': {}, '滋賀': {}}
+    unknown = []
     for st in states:
         v, ev, status = st['vehicle'], st['event'], st['status']
         vregion = v.get('region') if v.get('region') in ('京都', '滋賀') else '京都'
-        if status == '在庫':
+        if ev is None:
+            # 一度も状態登録がない車両は在庫と断定できないため別枠
+            unknown.append(v)
+        elif status == '在庫':
             loc = (ev or {}).get('location') or ''
             region = '滋賀' if '滋賀' in loc else ('京都' if '京都' in loc else vregion)
             stock[region].append((v, ev))
@@ -1744,6 +1748,10 @@ def build_morning_report(date=None):
             lines.append('（予約なし）')
         if region == '京都':
             lines += ['', '']
+
+    if unknown:
+        nums = ' '.join(v['number'] for v in unknown)
+        lines += ['', f'※状態未登録 {len(unknown)}台（{nums}）']
 
     return '\n'.join(lines)
 
