@@ -71,17 +71,30 @@ function fmtDateFull(d) {
 }
 
 // 指定日における車両の状態を返す
+// 終了日なしの非在庫イベントをいつまで有効とみなすか（サーバ側 _STALE_DAYS と一致させる）
+const STALE_DAYS = 60;
+
 function getVehicleStatusOnDate(vehicleId, dateStr) {
     const vEvents = events.filter(e => String(e.vehicle_id) === String(vehicleId));
     if (vEvents.length === 0) return { status: '在庫', event: null };
 
-    // その日にかかっているイベントを探す（終了日なしは当日以降ずっと有効）
-    for (const e of vEvents.sort((a, b) => (b.start_date || '').localeCompare(a.start_date || ''))) {
-        const s = e.start_date || '0000-00-00';
+    const staleBefore = new Date(new Date(dateStr).getTime() - STALE_DAYS * 86400000)
+        .toISOString().slice(0, 10);
+
+    // その日にかかっているイベントのうち、登録が最も新しいものを採用する。
+    // 朝一ラインの resolve_vehicle_states と同じ規則（新しい予約・修正が常に優先）。
+    const candidates = vEvents.filter(e => {
+        const s   = e.start_date || '0000-00-00';
         const end = e.end_date || '9999-12-31';
-        if (dateStr >= s && dateStr <= end) return { status: e.status, event: e };
-    }
-    return { status: '在庫', event: null };
+        if (dateStr < s || dateStr > end) return false;
+        // 終了日のないまま放置された古い貸出・予約は無視する
+        if (!e.end_date && e.status !== '在庫' && s < staleBefore) return false;
+        return true;
+    }).sort((a, b) =>
+        (b.created_at || '').localeCompare(a.created_at || '') || (b.id - a.id));
+
+    if (candidates.length === 0) return { status: '在庫', event: null };
+    return { status: candidates[0].status, event: candidates[0] };
 }
 
 // 現在（今日）の状態を返す
@@ -165,10 +178,11 @@ function inspectionWarning(dateStr) {
 
 // 直近イベントの状態アイコン（洗車・清掃・スタッドレス）
 function statusIcons(ev, v) {
+    // 朝一ラインの ★洗車済 ☆中清掃済 ●冬タイヤ と同じ並び
     let icons = '';
-    if (v.studless)  icons += '❄️';
     if (ev && ev.washed)           icons += '🚿';
     if (ev && ev.interior_cleaned) icons += '✨';
+    if (v.studless)                icons += '❄️';
     return icons;
 }
 
@@ -359,16 +373,14 @@ function renderStockTable(todayStr, regionFilter) {
     </tr></thead><tbody>`;
 
     stockVehicles.forEach(v => {
-        // 最新イベント（直近に終わったもの）から洗車・清掃・スタッドレスを取得
-        const latestEv = events
-            .filter(e => String(e.vehicle_id) === String(v.id))
-            .sort((a, b) => (b.start_date || '').localeCompare(a.start_date || ''))[0] || null;
+        // 現在有効なイベントから洗車・清掃を取得（朝一ラインと同じ判定）
+        const latestEv = getVehicleCurrentStatus(v.id).event;
 
         // アイコン
         let icons = '';
-        if (v.studless || (latestEv && latestEv.studless))    icons += '<span title="スタッドレス">❄️</span>';
         if (latestEv && latestEv.washed)            icons += '<span title="洗車済み">🚿</span>';
         if (latestEv && latestEv.interior_cleaned)  icons += '<span title="室内清掃済み">✨</span>';
+        if (v.studless)                             icons += '<span title="スタッドレス">❄️</span>';
 
         // 車検警告
         const inspHtml = inspectionWarning(v.inspection_date);

@@ -956,8 +956,13 @@ def register_event(v, status, state):
     mileage = state.get('mileage') or ''
     remarks = state.get('notes') or ''
     location= state.get('location') or ''
-    washed  = 1 if state.get('washed') else 0
-    interior_cleaned = 1 if state.get('interior_cleaned') else 0
+    # 洗車・室内清掃は在庫状態にのみ紐づく情報。
+    # 貸出・予約に入った時点で古い実績は無効になるためクリアする。
+    if status == '在庫':
+        washed  = 1 if state.get('washed') else 0
+        interior_cleaned = 1 if state.get('interior_cleaned') else 0
+    else:
+        washed = interior_cleaned = 0
 
     notes_parts = []
     if mileage:

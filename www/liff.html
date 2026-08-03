@@ -313,6 +313,7 @@ function lookupVehicle() {
         info.textContent  = `${data[0].car_type}  ${data[0].full_number || ''}`;
         info.className    = 'vehicle-info';
         selWrap.classList.add('hide');
+        applyVehicleFlags(data[0]);
       } else {
         // 複数台
         selectedVehicles = data;
@@ -336,12 +337,21 @@ function lookupVehicle() {
   }, 400);
 }
 
+// 車両マスタの現在値をチェックボックスに反映する。
+// スタッドレスは装着したままなので、選択のたびに現状を復元しないと
+// 送信時に意図せず解除されてしまう。
+function applyVehicleFlags(v) {
+  document.getElementById('studless').checked       = !!v.studless;
+  document.getElementById('isRentalOther').checked  = !!v.is_rental_other;
+}
+
 function selectVehicle() {
   const sel = document.getElementById('vehicleSelect');
   selectedVehicleId = sel.value ? parseInt(sel.value) : null;
   const v = selectedVehicles.find(v => v.id == sel.value);
   if (v) {
     document.getElementById('vehicleInfo').textContent = `${v.car_type}  ${v.full_number || ''}`;
+    applyVehicleFlags(v);
   }
   updateSubmitBtn();
 }
