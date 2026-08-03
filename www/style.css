@@ -219,3 +219,12 @@ thead .cal-vehicle-col { position: sticky; left: 0; top: 0; z-index: 3; backgrou
 
 /* 日付 */
 .today-marker { font-weight: bold; }
+
+/* 朝一ラインプレビューの明細行（タップで編集・削除） */
+.mp-item { display: flex; align-items: center; gap: 6px; flex-wrap: wrap;
+           padding: 3px 6px; margin: 0 -6px; border-radius: 5px; cursor: pointer; }
+.mp-item:hover { background: #E3F2FD; }
+.mp-item:active { background: #BBDEFB; }
+.mp-item .mp-edit { margin-left: auto; color: #90A4AE; font-size: 11px; }
+.mp-item:hover .mp-edit { color: #1a3a5c; }
+.mp-item > div { flex-basis: 100%; }

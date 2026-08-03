@@ -752,9 +752,44 @@ function openAddModal(vehicleId) {
     document.getElementById('addModal').classList.add('open');
 }
 
+// 既存の登録を読み込んで編集する（朝一プレビューからの修正用）
+function openEditModal(eventId, vehicleId) {
+    const ev = events.find(e => e.id == eventId);
+    if (!ev) { alert('登録が見つかりません（画面を再読込してください）'); return; }
+    editingEventId = ev.id;
+
+    const v = vehicles.find(x => x.id == (vehicleId || ev.vehicle_id));
+    const numInput = document.getElementById('formVehicleNumber');
+    numInput.value = v ? v.number : '';
+    numInput.readOnly = true;
+    document.getElementById('vehicleSuggest').textContent =
+        v ? `${v.car_type} (${v.full_number || v.number})` : '';
+
+    document.getElementById('modalTitle').textContent = '登録内容を編集';
+    document.getElementById('formStatus').value      = ev.status || '在庫';
+    document.getElementById('formStartDate').value   = ev.start_date || '';
+    document.getElementById('formEndDate').value     = ev.end_date || '';
+    document.getElementById('formStaff').value       = ev.staff || '';
+    document.getElementById('formClient').value      = ev.client || '';
+    document.getElementById('formClientContact').value = ev.client_contact || '';
+    document.getElementById('formCategory').value    = ev.category || '';
+    document.getElementById('formNotes').value       = _clientNote(ev);
+    onStatusChange();
+
+    document.getElementById('addModal').classList.add('open');
+}
+
+// システムが付けた文言（所在地/取込メモ）は編集欄に出さない
+function _clientNote(ev) {
+    const n = (ev.notes || '').trim();
+    if (n.startsWith('所在地:') || n.startsWith('エクセル取込')) return '';
+    return n;
+}
+
 function closeAddModal() {
     document.getElementById('addModal').classList.remove('open');
     document.getElementById('formVehicleNumber').readOnly = false;
+    editingEventId = null;
 }
 
 function onVehicleNumberInput() {
@@ -790,8 +825,9 @@ async function saveEvent() {
         notes: document.getElementById('formNotes').value.trim() || null
     };
 
-    await fetch(API + '/api/events', {
-        method: 'POST',
+    const editing = editingEventId;
+    await fetch(API + '/api/events' + (editing ? '/' + editing : ''), {
+        method: editing ? 'PUT' : 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload)
     });
@@ -800,6 +836,8 @@ async function saveEvent() {
     closeAddModal();
     renderCurrentPage();
     if (currentDetailVehicleId) renderDetail(currentDetailVehicleId);
+    // 朝一プレビューを開いたまま編集した場合はその場で作り直す
+    if (document.getElementById('morningModal').classList.contains('open')) loadMorningPreview();
 
     document.getElementById('lastUpdated').textContent = fmtUpdated();
 }
@@ -863,6 +901,8 @@ async function sendFormLinkToLine() {
 init();
 
 // ── 朝一ﾗｲﾝﾌﾟﾚﾋﾞｭｰ ──────────────────────────────────────────
+let morningBlocks = [];
+
 function openMorningPreview() {
     const el = document.getElementById('morningDate');
     if (!el.value) {
@@ -877,21 +917,82 @@ function closeMorningPreview() {
     document.getElementById('morningModal').classList.remove('open');
 }
 
+function esc(t) {
+    return String(t).replace(/[&<>"]/g, c => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;' }[c]));
+}
+
 async function loadMorningPreview() {
-    const box = document.getElementById('morningText');
+    const box  = document.getElementById('morningText');
     const info = document.getElementById('morningInfo');
-    box.textContent = '読み込み中…';
+    box.innerHTML = '読み込み中…';
     info.textContent = '';
     try {
         const d = document.getElementById('morningDate').value;
         const r = await fetch('/api/morning-report/preview?date=' + encodeURIComponent(d));
         if (!r.ok) throw new Error(r.status);
         const j = await r.json();
-        box.textContent = j.message;
+        morningBlocks = j.blocks || [];
+        renderMorningBlocks();
         info.textContent = j.message.length + '文字';
     } catch (e) {
         box.textContent = '❌ 取得に失敗しました';
     }
+}
+
+// 明細行はタップで編集・削除できるようにする。
+// 見出しや空行はそのまま表示するだけ。
+function renderMorningBlocks() {
+    const box = document.getElementById('morningText');
+    box.innerHTML = morningBlocks.map((b, i) => {
+        if (b.type === 'blank') return '<div style="height:8px;"></div>';
+        if (b.type === 'item') {
+            const sub = b.sub ? `<div style="font-size:11px;color:#666;">${esc(b.sub)}</div>` : '';
+            return `<div class="mp-item" onclick="openMorningRowMenu(${i})">`
+                 + `<span>${esc(b.text)}</span><span class="mp-edit">✎</span>${sub}</div>`;
+        }
+        const weight = (b.type === 'head' || b.type === 'section') ? 'font-weight:bold;' : '';
+        return `<div style="${weight}">${esc(b.text)}</div>`;
+    }).join('');
+}
+
+// 選択した行に対する操作
+function openMorningRowMenu(idx) {
+    const b = morningBlocks[idx];
+    if (!b || b.type !== 'item') return;
+    document.getElementById('mpRowLabel').textContent = b.text.replace(/^・/, '');
+    document.getElementById('mpRowIdx').value = idx;
+    document.getElementById('mpRowMenu').classList.add('open');
+}
+
+function closeMorningRowMenu() {
+    document.getElementById('mpRowMenu').classList.remove('open');
+}
+
+function morningRowEdit() {
+    const b = morningBlocks[document.getElementById('mpRowIdx').value];
+    closeMorningRowMenu();
+    if (!b) return;
+    if (b.event_id) openEditModal(b.event_id, b.vehicle_id);
+    else openAddModal(b.vehicle_id);
+}
+
+async function morningRowDelete() {
+    const b = morningBlocks[document.getElementById('mpRowIdx').value];
+    if (!b) return;
+    if (!b.event_id) { alert('この行には削除できる登録がありません'); return; }
+    if (!confirm(`${b.text.replace(/^・/, '')}
+この登録を削除しますか？
+（一覧から外れ、状態未登録になります）`)) return;
+    closeMorningRowMenu();
+    await fetch(API + '/api/events/' + b.event_id, { method: 'DELETE' });
+    events = await fetch(API + '/api/events').then(r => r.json());
+    renderCurrentPage();
+    loadMorningPreview();
+}
+
+// プレビューから車両を追加登録する（在庫・車検などの追加）
+function morningAddVehicle() {
+    openAddModal();
 }
 
 async function sendMorningNow() {
@@ -900,7 +1001,7 @@ async function sendMorningNow() {
         const r = await fetch('/api/morning-report/send', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ message: document.getElementById('morningText').textContent })
+            body: JSON.stringify({ date: document.getElementById('morningDate').value })
         });
         alert(r.ok ? '✅ 送信しました' : '❌ 送信に失敗しました');
         if (r.ok) closeMorningPreview();

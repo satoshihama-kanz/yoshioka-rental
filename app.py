@@ -1898,8 +1898,25 @@ def resolve_vehicle_states(date=None, dept=DEFAULT_DEPT):
         out.append({'vehicle': v, 'event': ev, 'status': status})
     return out
 
-def build_morning_report(date=None):
-    """朝一の一斉ライン本文。レンタカー事業部のみが対象（セールス部門は配信しない）"""
+def blocks_to_text(blocks):
+    """プレビュー用の構造化ブロックから一斉ライン本文を組み立てる"""
+    out = []
+    for b in blocks:
+        if b['type'] == 'blank':
+            out.append('')
+            continue
+        out.append(b['text'])
+        if b.get('sub'):
+            out.append(b['sub'])
+    return '\n'.join(out)
+
+def build_morning_blocks(date=None):
+    """朝一の一斉ラインを構造化ブロックで返す。
+
+    プレビュー画面から車両を直接選んで編集・削除できるよう、
+    明細行には vehicle_id / event_id を持たせる。本文はここから生成するので、
+    画面表示と実際に送られる文面が食い違うことはない。
+    """
     d = date or today_jst()
     states = resolve_vehicle_states(d, dept='rental')
 
@@ -1925,54 +1942,76 @@ def build_morning_report(date=None):
             maint[vregion].append((v, ev, status))
 
     dt = datetime.strptime(d, '%Y-%m-%d')
-    lines = [f'【{dt.month}/{dt.day} 朝一 在庫・予約】', '',
-             '★洗車済　☆中清掃済　●冬タイヤ', '']
+    blocks = []
+    def head(text):  blocks.append({'type': 'head',    'text': text})
+    def section(t):  blocks.append({'type': 'section', 'text': t})
+    def plain(text): blocks.append({'type': 'plain',   'text': text})
+    def blank():     blocks.append({'type': 'blank'})
+    def item(text, v, ev, kind, sub=None):
+        b = {'type': 'item', 'text': text, 'kind': kind,
+             'vehicle_id': v['id'], 'number': v['number'],
+             'event_id': (ev or {}).get('id')}
+        if sub: b['sub'] = sub
+        blocks.append(b)
+
+    head(f'【{dt.month}/{dt.day} 朝一 在庫・予約】')
+    blank()
+    plain('★洗車済　☆中清掃済　●冬タイヤ')
+    blank()
 
     for region, flag, order in (('京都', '🔵', MORNING_STAFF_KYOTO),
                                 ('滋賀', '🟢', MORNING_STAFF_SHIGA)):
         items = stock[region]
-        lines.append(f'{flag}{region} 在庫 {len(items)}台')
+        section(f'{flag}{region} 在庫 {len(items)}台')
         if items:
             for v, ev in items:
-                lines.append(f"・{v['car_type']} {v['number']}{_stock_marks(v, ev)}".rstrip())
+                item(f"・{v['car_type']} {v['number']}{_stock_marks(v, ev)}".rstrip(),
+                     v, ev, '在庫')
         else:
-            lines.append('（在庫なし）')
+            plain('（在庫なし）')
 
-        lines += ['', f'{flag}{region} 予約']
+        blank()
+        section(f'{flag}{region} 予約')
         names = order + [s for s in resv[region] if s not in order]
         first = True
         for s in names:
             if s not in resv[region]:
                 continue
-            if not first: lines.append('')
-            lines.append(f'【{s}】')
+            if not first: blank()
+            plain(f'【{s}】')
             for v, ev in resv[region][s]:
                 parts = [f"・{v['car_type']}", v['number'], _period_label(ev)]
                 if ev.get('client'): parts.append(ev['client'])
-                lines.append(' '.join(p for p in parts if p))
                 note = _clean_note(ev)
-                if note:
-                    lines.append(f'　（{note}）')
+                item(' '.join(p for p in parts if p), v, ev, '予約済',
+                     sub=f'　（{note}）' if note else None)
             first = False
         if first:
-            lines.append('（予約なし）')
+            plain('（予約なし）')
 
         for label, wanted in (('修理', ('修理中',)), ('点検・車検', ('点検中', '車検中'))):
             group = [x for x in maint[region] if x[2] in wanted]
             if not group:
                 continue
-            lines += ['', f'▼{label}']
+            blank()
+            section(f'▼{label}')
             for v, ev, status in group:
-                lines.append(f"・{v['car_type']} {v['number']}")
+                item(f"・{v['car_type']} {v['number']}", v, ev, status)
 
         if region == '京都':
-            lines += ['', '']
+            blank()
+            blank()
 
     if unknown:
         nums = ' '.join(v['number'] for v in unknown)
-        lines += ['', f'※状態未登録 {len(unknown)}台（{nums}）']
+        blank()
+        plain(f'※状態未登録 {len(unknown)}台（{nums}）')
 
-    return '\n'.join(lines)
+    return blocks
+
+def build_morning_report(date=None):
+    """朝一の一斉ライン本文（テキスト）"""
+    return blocks_to_text(build_morning_blocks(date))
 
 @app.route('/api/morning-report', methods=['GET', 'POST'])
 def api_morning_report():
@@ -1989,9 +2028,10 @@ def api_morning_report():
 @app.route('/api/morning-report/preview', methods=['GET'])
 @login_required
 def api_morning_report_preview():
-    """送信せずに本文だけ返す（前夜の事前確認用）"""
+    """送信せずに本文と明細を返す（前夜の事前確認・修正用）"""
     d = request.args.get('date') or today_jst()
-    return jsonify({'date': d, 'message': build_morning_report(d)})
+    blocks = build_morning_blocks(d)
+    return jsonify({'date': d, 'message': blocks_to_text(blocks), 'blocks': blocks})
 
 @app.route('/api/morning-report/send', methods=['POST'])
 @login_required

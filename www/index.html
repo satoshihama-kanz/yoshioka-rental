@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>吉岡商会 車両管理システム</title>
-<link rel="stylesheet" href="style.css?v=20260803c">
+<link rel="stylesheet" href="style.css?v=20260804a">
 </head>
 <body>
 
@@ -208,9 +208,11 @@
       <label style="font-size:11px;color:#555;">対象日</label>
       <input type="date" id="morningDate" onchange="loadMorningPreview()" style="font-size:12px;padding:3px 6px;">
       <button class="btn btn-outline btn-sm" onclick="loadMorningPreview()" style="font-size:11px;padding:3px 8px;">再読込</button>
+      <button class="btn btn-sm" onclick="morningAddVehicle()" style="font-size:11px;padding:3px 8px;background:#4CAF50;color:white;">＋車両を追加</button>
       <span id="morningInfo" style="font-size:11px;color:#888;"></span>
     </div>
-    <pre id="morningText" style="background:#F7F7F7;border:1px solid #e0e0e0;border-radius:6px;padding:10px;font-size:12px;line-height:1.6;white-space:pre-wrap;word-break:break-all;max-height:55vh;overflow-y:auto;margin:0;font-family:inherit;">読み込み中…</pre>
+    <div style="font-size:10px;color:#888;margin-bottom:4px;">車両の行をタップすると編集・削除できます</div>
+    <div id="morningText" style="background:#F7F7F7;border:1px solid #e0e0e0;border-radius:6px;padding:10px;font-size:12px;line-height:1.6;word-break:break-all;max-height:52vh;overflow-y:auto;">読み込み中…</div>
     <div class="modal-actions">
       <button class="btn btn-outline" onclick="closeMorningPreview()">閉じる</button>
       <button class="btn btn-success" onclick="sendMorningNow()">今すぐ送信</button>
@@ -218,8 +220,24 @@
   </div>
 </div>
 
+<!-- 朝一プレビューで行を選んだときの操作メニュー -->
+<div class="modal-overlay" id="mpRowMenu" style="z-index:1200;">
+  <div class="modal" style="max-width:320px;">
+    <h2 style="font-size:14px;">この車両を</h2>
+    <input type="hidden" id="mpRowIdx">
+    <div id="mpRowLabel" style="font-size:13px;font-weight:bold;color:#1a3a5c;background:#F7F7F7;border-radius:6px;padding:8px 10px;margin-bottom:10px;word-break:break-all;"></div>
+    <div style="display:flex;flex-direction:column;gap:8px;">
+      <button class="btn btn-primary" onclick="morningRowEdit()">✎ 編集する（入力フォーム）</button>
+      <button class="btn btn-danger" onclick="morningRowDelete()">🗑 この登録を削除する</button>
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-outline" onclick="closeMorningRowMenu()">キャンセル</button>
+    </div>
+  </div>
+</div>
+
 <div id="tooltip" class="tooltip" style="display:none;"></div>
 
-<script src="app.js?v=20260803d"></script>
+<script src="app.js?v=20260804a"></script>
 </body>
 </html>
