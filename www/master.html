@@ -42,14 +42,32 @@ tr:hover td{background:#f8fafc}
 .alert{padding:8px 12px;border-radius:6px;margin-bottom:12px;font-size:13px;display:none}
 .alert.error{background:#fdecea;color:#c62828;display:block}
 .alert.success{background:#e8f5e9;color:#2e7d32;display:block}
+/* 部門切替 */
+.dept-tabs{display:flex;background:#12293f}
+.dept-tab{flex:1 1 0;text-align:center;padding:9px 6px;cursor:pointer;font-size:13px;font-weight:bold;
+  color:rgba(255,255,255,0.55);border-bottom:3px solid transparent;transition:background .15s,color .15s}
+.dept-tab:hover{background:rgba(255,255,255,0.06);color:rgba(255,255,255,0.85)}
+.dept-tab.active{color:#fff;background:rgba(255,255,255,0.12);border-bottom-color:#4FC3F7}
+#deptTab-sales.active{border-bottom-color:#FFB74D}
+body.dept-sales header{background:#4a3410}
+body.dept-sales .dept-tabs{background:#3a280c}
+body.dept-sales th{background:#4a3410}
+.dept-note{font-size:12px;color:#888;margin-bottom:10px}
 </style>
 </head>
 <body>
 
 <header>
   <h1>⚙️ マスタ管理</h1>
-  <a href="/">← ダッシュボードへ戻る</a>
+  <a href="/" id="backLink">← ダッシュボードへ戻る</a>
+  <span id="deptLabel" style="margin-left:auto;font-size:13px;opacity:.85"></span>
 </header>
+
+<!-- 部門切替 -->
+<div class="dept-tabs">
+  <div class="dept-tab active" id="deptTab-rental" onclick="switchDept('rental')">🚙 レンタカー事業部</div>
+  <div class="dept-tab" id="deptTab-sales" onclick="switchDept('sales')">🏢 セールス部門（代車）</div>
+</div>
 
 <div class="tabs">
   <div class="tab active" onclick="showTab('vehicles')">🚗 車両マスタ</div>
@@ -72,6 +90,7 @@ tr:hover td{background:#f8fafc}
 
 <!-- 取引先マスタ -->
 <div class="content" id="tab-clients">
+  <div class="dept-note">※ 取引先マスタは両部門で共通です</div>
   <div class="toolbar">
     <input type="text" id="cSearch" placeholder="名前・読み仮名で検索…" oninput="renderClients()">
     <button class="btn btn-success" onclick="openClientModal()">＋ 追加</button>
@@ -100,6 +119,12 @@ tr:hover td{background:#f8fafc}
   <div class="modal">
     <h3 id="vModalTitle">車両を追加</h3>
     <div class="alert" id="vAlert"></div>
+    <div class="form-row"><label>部門</label>
+      <select id="vDepartment">
+        <option value="rental">レンタカー事業部</option>
+        <option value="sales">セールス部門（代車）</option>
+      </select>
+    </div>
     <div class="form-row"><label>車番（4桁）</label><input type="text" id="vNumber" placeholder="例: 1234" maxlength="6"></div>
     <div class="form-row"><label>車種</label><input type="text" id="vCarType" placeholder="例: ADバン"></div>
     <div class="form-row"><label>地域</label><input type="text" id="vRegion" placeholder="例: 京都"></div>
@@ -136,6 +161,12 @@ tr:hover td{background:#f8fafc}
   <div class="modal">
     <h3 id="sModalTitle">従業員を追加</h3>
     <div class="alert" id="sAlert"></div>
+    <div class="form-row"><label>部門</label>
+      <select id="sDepartment">
+        <option value="rental">レンタカー事業部</option>
+        <option value="sales">セールス部門</option>
+      </select>
+    </div>
     <div class="form-row"><label>氏名</label><input type="text" id="sName" placeholder="例: 山田"></div>
     <div class="modal-actions">
       <button class="btn" onclick="closeModal('staffModal')" style="background:#eee">キャンセル</button>
@@ -149,11 +180,41 @@ const API = '';
 let vehicles = [], clients = [], staffList = [];
 let editVid = null, editCid = null, editSid = null;
 
+// ── 部門（事業部） ──
+const DEPT_LABELS = { rental: 'レンタカー事業部', sales: 'セールス部門' };
+const DEPT_DEFAULT = 'rental';
+function initialDept() {
+  const q = new URLSearchParams(location.search).get('dept');
+  if (q && DEPT_LABELS[q]) return q;
+  const saved = localStorage.getItem('fleetDept');
+  return (saved && DEPT_LABELS[saved]) ? saved : DEPT_DEFAULT;
+}
+let currentDept = initialDept();
+
+function applyDeptChrome() {
+  document.body.classList.toggle('dept-sales', currentDept === 'sales');
+  Object.keys(DEPT_LABELS).forEach(d => {
+    const t = document.getElementById('deptTab-' + d);
+    if (t) t.classList.toggle('active', d === currentDept);
+  });
+  document.getElementById('deptLabel').textContent = DEPT_LABELS[currentDept];
+  document.getElementById('backLink').href = '/?dept=' + currentDept;
+}
+
+function switchDept(dept) {
+  if (!DEPT_LABELS[dept] || dept === currentDept) return;
+  currentDept = dept;
+  localStorage.setItem('fleetDept', dept);
+  applyDeptChrome();
+  load();
+}
+
 async function load() {
+  applyDeptChrome();
   [vehicles, clients, staffList] = await Promise.all([
-    fetch(API + '/api/master/vehicles').then(r => r.json()),
+    fetch(`${API}/api/master/vehicles?dept=${currentDept}`).then(r => r.json()),
     fetch(API + '/api/master/clients').then(r => r.json()),
-    fetch(API + '/api/master/staff').then(r => r.json()),
+    fetch(`${API}/api/master/staff?dept=${currentDept}`).then(r => r.json()),
   ]);
   renderVehicles(); renderClients(); renderStaff();
 }
@@ -168,7 +229,14 @@ function showTab(name) {
 function renderVehicles() {
   const q = document.getElementById('vSearch').value.toLowerCase();
   const filtered = vehicles.filter(v => !q || v.number.includes(q) || (v.car_type||'').toLowerCase().includes(q));
-  document.getElementById('vCount').textContent = filtered.length + ' 件';
+  document.getElementById('vCount').textContent = `${filtered.length} 件（${DEPT_LABELS[currentDept]}）`;
+  if (filtered.length === 0) {
+    document.getElementById('vTable').innerHTML =
+      `<tr><td colspan="7" style="text-align:center;color:#999;padding:24px">
+         ${DEPT_LABELS[currentDept]}の車両はまだ登録されていません
+       </td></tr>`;
+    return;
+  }
   document.getElementById('vTable').innerHTML = filtered.map(v => `
     <tr>
       <td><b>${v.number}</b></td>
@@ -188,6 +256,7 @@ function openVehicleModal(id) {
   editVid = id || null;
   const v = id ? vehicles.find(x => x.id === id) : {};
   document.getElementById('vModalTitle').textContent = id ? '車両を編集' : '車両を追加';
+  document.getElementById('vDepartment').value = v.department || currentDept;
   document.getElementById('vNumber').value = v.number || '';
   document.getElementById('vCarType').value = v.car_type || '';
   document.getElementById('vRegion').value = v.region || '';
@@ -208,6 +277,7 @@ async function saveVehicle() {
     is_rental_other: document.getElementById('vRentalOther').checked,
   };
   if (!body.number) { showAlert('vAlert', '車番を入力してください'); return; }
+  body.department = document.getElementById('vDepartment').value;
   const url = editVid ? `${API}/api/master/vehicles/${editVid}` : `${API}/api/master/vehicles`;
   const method = editVid ? 'PUT' : 'POST';
   const res = await fetch(url, {method, headers:{'Content-Type':'application/json'}, body: JSON.stringify(body)});
@@ -273,7 +343,14 @@ async function deleteClient(id, name) {
 
 // ── 従業員 ──
 function renderStaff() {
-  document.getElementById('sCount').textContent = staffList.length + ' 件';
+  document.getElementById('sCount').textContent = `${staffList.length} 件（${DEPT_LABELS[currentDept]}）`;
+  if (staffList.length === 0) {
+    document.getElementById('sTable').innerHTML =
+      `<tr><td colspan="2" style="text-align:center;color:#999;padding:24px">
+         ${DEPT_LABELS[currentDept]}の従業員はまだ登録されていません
+       </td></tr>`;
+    return;
+  }
   document.getElementById('sTable').innerHTML = staffList.map(s => `
     <tr>
       <td><b>${s.name}</b></td>
@@ -288,13 +365,17 @@ function openStaffModal(id) {
   editSid = id || null;
   const s = id ? staffList.find(x => x.id === id) : {};
   document.getElementById('sModalTitle').textContent = id ? '従業員を編集' : '従業員を追加';
+  document.getElementById('sDepartment').value = s.department || currentDept;
   document.getElementById('sName').value = s.name || '';
   document.getElementById('sAlert').className = 'alert';
   document.getElementById('staffModal').classList.add('open');
 }
 
 async function saveStaff() {
-  const body = { name: document.getElementById('sName').value.trim() };
+  const body = {
+    name: document.getElementById('sName').value.trim(),
+    department: document.getElementById('sDepartment').value,
+  };
   if (!body.name) { showAlert('sAlert', '氏名を入力してください'); return; }
   const url = editSid ? `${API}/api/master/staff/${editSid}` : `${API}/api/master/staff`;
   const method = editSid ? 'PUT' : 'POST';

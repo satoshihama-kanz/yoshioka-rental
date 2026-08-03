@@ -20,6 +20,21 @@ LINE_NOTIFY_TOKEN     = os.environ.get('LINE_NOTIFY_TOKEN', '')
 
 DB = os.path.join(os.path.dirname(__file__), 'data', 'fleet.db')
 
+# ── 部門（事業部） ──────────────────────────────────────────
+# rental: 既存のレンタカー事業部（336台）／sales: セールス部門の代車
+DEPARTMENTS  = {'rental': 'レンタカー事業部', 'sales': 'セールス部門'}
+DEFAULT_DEPT = 'rental'
+
+def norm_dept(value, default=DEFAULT_DEPT):
+    """部門コードを正規化する。不正値・空値は default に落とす"""
+    v = (value or '').strip()
+    return v if v in DEPARTMENTS else default
+
+def req_dept(default=None):
+    """リクエストの dept パラメータを取得。未指定なら default（None＝全部門）"""
+    v = (request.args.get('dept') or '').strip()
+    return v if v in DEPARTMENTS else default
+
 # ── ログイン画面HTML ────────────────────────────────────────
 LOGIN_HTML = '''<!DOCTYPE html>
 <html lang="ja">
@@ -677,6 +692,102 @@ def _seed_clients(c):
         c.execute('UPDATE clients SET reading=? WHERE name=? AND (reading IS NULL OR reading="")',
                   (reading, name))
 
+# ══════════════════════════════════════════════════════════
+# ⚠️ セールス部門 仮稼働用ダミーデータ（本物の30台リスト受領後に削除する）
+#   ・_SALES_DEMO_* と _seed_sales_demo() と init_db 内の呼び出し1行を消せば撤去できる
+#   ・投入は一度きり（settings の sales_demo_seeded で管理）。画面から消しても復活しない
+#   ・撤去用API: POST /api/admin/clear-sales
+# ══════════════════════════════════════════════════════════
+_SALES_DEMO_STAFF = ['岡田 涼太', '西村 綾', '森本 大輔', '中井 千夏',
+                     '山下 拓也', '藤原 みなみ', '高橋 誠', '小川 由紀']
+
+# (車番, 車種, 区分, 地域)
+_SALES_DEMO_VEHICLES = [
+    ('8001', 'ﾊｽﾗｰ',      '軽自動車', '京都'), ('8002', 'ﾀﾝﾄ',       '軽自動車', '京都'),
+    ('8003', 'N-BOX',     '軽自動車', '京都'), ('8004', 'ﾜｺﾞﾝR',     '軽自動車', '京都'),
+    ('8005', 'ﾐﾗｲｰｽ',    '軽自動車', '京都'), ('8006', 'ｱﾙﾄ',       '軽自動車', '京都'),
+    ('8007', 'ﾑｰｳﾞ',      '軽自動車', '京都'), ('8008', 'ｽﾍﾟｰｼｱ',   '軽自動車', '京都'),
+    ('8009', 'ﾌｨｯﾄ',      '普通車',   '京都'), ('8010', 'ﾔﾘｽ',       '普通車',   '京都'),
+    ('8011', 'ﾉｰﾄ',       '普通車',   '京都'), ('8012', 'ｱｸｱ',       '普通車',   '京都'),
+    ('8013', 'ﾙｰﾐｰ',      '普通車',   '京都'), ('8014', 'ｼｴﾝﾀ',      'ﾜﾝﾎﾞｯｸｽ', '京都'),
+    ('8015', 'ADﾊﾞﾝ',     '商用車',   '京都'),
+    ('8016', 'ﾊｽﾗｰ',      '軽自動車', '滋賀'), ('8017', 'ﾀﾝﾄ',       '軽自動車', '滋賀'),
+    ('8018', 'N-BOX',     '軽自動車', '滋賀'), ('8019', 'ﾜｺﾞﾝR',     '軽自動車', '滋賀'),
+    ('8020', 'ﾐﾗｲｰｽ',    '軽自動車', '滋賀'), ('8021', 'ｱﾙﾄ',       '軽自動車', '滋賀'),
+    ('8022', 'ﾑｰｳﾞ',      '軽自動車', '滋賀'), ('8023', 'ﾃﾞｲｽﾞ',     '軽自動車', '滋賀'),
+    ('8024', 'ﾌｨｯﾄ',      '普通車',   '滋賀'), ('8025', 'ﾔﾘｽ',       '普通車',   '滋賀'),
+    ('8026', 'ﾉｰﾄ',       '普通車',   '滋賀'), ('8027', 'ｱｸｱ',       '普通車',   '滋賀'),
+    ('8028', 'ﾀﾝｸ',       '普通車',   '滋賀'), ('8029', 'ﾌﾘｰﾄﾞ',     'ﾜﾝﾎﾞｯｸｽ', '滋賀'),
+    ('8030', 'ﾊｲｾﾞｯﾄ',    '商用車',   '滋賀'),
+]
+
+# (車番, 状態, 開始日オフセット, 終了日オフセット or None, 担当, 顧客, 適用)
+_SALES_DEMO_EVENTS = [
+    ('8001', '貸出中', -4,  6,   '岡田 涼太',   'ｻﾝﾌﾟﾙ自動車',   '代車'),
+    ('8003', '貸出中', -2,  12,  '西村 綾',     'ﾃｽﾄ工業',       '代車'),
+    ('8005', '貸出中', -9,  3,   '森本 大輔',   'ﾃﾞﾓﾓｰﾀｰｽ',     '損保'),
+    ('8009', '貸出中', -1,  20,  '中井 千夏',   'ｻﾝﾌﾟﾙ商会',     'ﾏﾝｽﾘｰ'),
+    ('8016', '貸出中', -6,  8,   '山下 拓也',   'ﾃｽﾄ運輸',       '代車'),
+    ('8018', '貸出中', -3,  4,   '藤原 みなみ', 'ｻﾝﾌﾟﾙ建設',     '代車'),
+    ('8024', '貸出中', -12, 2,   '高橋 誠',     'ﾃﾞﾓ商事',       '損保'),
+    ('8026', '貸出中', -5,  15,  '小川 由紀',   'ｻﾝﾌﾟﾙ電機',     'ﾏﾝｽﾘｰ'),
+    ('8002', '予約済', 2,   9,   '岡田 涼太',   'ﾃｽﾄ自動車販売', '代車'),
+    ('8010', '予約済', 5,   11,  '中井 千夏',   'ｻﾝﾌﾟﾙ興業',     '代車'),
+    ('8019', '予約済', 1,   6,   '山下 拓也',   'ﾃﾞﾓ物産',       '損保'),
+    ('8027', '予約済', 7,   14,  '高橋 誠',     'ﾃｽﾄ産業',       '代車'),
+    ('8007', '修理中', -3,  4,   '森本 大輔',   '',              ''),
+    ('8022', '修理中', -1,  6,   '藤原 みなみ', '',              ''),
+    ('8013', '点検中', 0,   1,   '西村 綾',     '',              ''),
+    ('8029', '車検中', -2,  2,   '小川 由紀',   '',              ''),
+]
+
+def _seed_sales_demo(c):
+    """セールス部門の仮稼働用ダミーデータを一度だけ投入する"""
+    if c.execute("SELECT value FROM settings WHERE key='sales_demo_seeded'").fetchone():
+        return 0
+    if c.execute("SELECT COUNT(*) FROM vehicles WHERE department='sales'").fetchone()[0] > 0:
+        # 既に本物のデータが入っているなら何もしない
+        c.execute("INSERT OR REPLACE INTO settings (key,value) VALUES ('sales_demo_seeded','skipped')")
+        return 0
+
+    now  = datetime.now(JST).strftime('%Y-%m-%d %H:%M:%S')
+    base = datetime.strptime(today_jst(), '%Y-%m-%d')
+    off  = lambda n: (base + timedelta(days=n)).strftime('%Y-%m-%d')
+
+    for name in _SALES_DEMO_STAFF:
+        c.execute("INSERT OR IGNORE INTO staff (name, department) VALUES (?, 'sales')", (name,))
+
+    ids = {}
+    for num, ctype, cat, region in _SALES_DEMO_VEHICLES:
+        max_id = c.execute('SELECT MAX(id) FROM vehicles').fetchone()[0] or 0
+        vid = max_id + 1
+        c.execute('''INSERT INTO vehicles
+            (id,number,car_type,year,full_number,inspection_date,region,car_category,department)
+            VALUES (?,?,?,?,?,?,?,?,'sales')''',
+            (vid, num, ctype, '', f'{region}500ｻ {num}', off(120), region, cat))
+        ids[num] = vid
+
+    # 全車にまず在庫イベント（「状態未登録」を出さないため）
+    for num, vid in ids.items():
+        c.execute('''INSERT INTO events
+            (vehicle_id,status,start_date,end_date,staff,client,category,notes,created_at,location,washed,interior_cleaned)
+            VALUES (?,'在庫',?,NULL,'','','','',?,?,1,?)''',
+            (vid, off(-30), now, '京都本社' if ids[num] % 2 else '滋賀支店', 1 if vid % 3 == 0 else 0))
+
+    # 稼働中・予約・整備を上書き（created_at が新しいほど優先される）
+    for num, status, s_off, e_off, staff, client, cat in _SALES_DEMO_EVENTS:
+        vid = ids.get(num)
+        if not vid:
+            continue
+        c.execute('''INSERT INTO events
+            (vehicle_id,status,start_date,end_date,staff,client,category,notes,created_at)
+            VALUES (?,?,?,?,?,?,?,?,?)''',
+            (vid, status, off(s_off), off(e_off) if e_off is not None else None,
+             staff, client, cat, 'デモデータ', now))
+
+    c.execute("INSERT OR REPLACE INTO settings (key,value) VALUES ('sales_demo_seeded',?)", (now,))
+    return len(ids)
+
 # ── DB ─────────────────────────────────────────────────────
 def get_db():
     conn = sqlite3.connect(DB)
@@ -698,7 +809,8 @@ def init_db():
             region TEXT DEFAULT '',
             studless INTEGER DEFAULT 0,
             is_rental_other INTEGER DEFAULT 0,
-            car_category TEXT DEFAULT ''
+            car_category TEXT DEFAULT '',
+            department TEXT DEFAULT 'rental'
         );
         CREATE TABLE IF NOT EXISTS events (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -736,7 +848,8 @@ def init_db():
         );
         CREATE TABLE IF NOT EXISTS staff (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
-            name TEXT UNIQUE
+            name TEXT UNIQUE,
+            department TEXT DEFAULT 'rental'
         );
     ''')
     conn.commit()
@@ -752,6 +865,20 @@ def init_db():
         "ALTER TABLE events ADD COLUMN interior_cleaned INTEGER DEFAULT 0",
         "ALTER TABLE events ADD COLUMN client_contact TEXT DEFAULT ''",
         "ALTER TABLE clients ADD COLUMN reading TEXT DEFAULT ''",
+        # 部門（事業部）。既存データはすべてレンタカー事業部として扱う
+        "ALTER TABLE vehicles ADD COLUMN department TEXT DEFAULT 'rental'",
+        "ALTER TABLE staff ADD COLUMN department TEXT DEFAULT 'rental'",
+    ]:
+        try:
+            c.execute(sql)
+        except Exception:
+            pass
+    conn.commit()
+
+    # 部門未設定のレコードはレンタカー事業部に寄せる（既存336台・既存社員の保護）
+    for sql in [
+        "UPDATE vehicles SET department='rental' WHERE department IS NULL OR department=''",
+        "UPDATE staff SET department='rental' WHERE department IS NULL OR department=''",
     ]:
         try:
             c.execute(sql)
@@ -771,10 +898,19 @@ def init_db():
     # 従業員マスタ：初期データ
     for name in STAFF_NAMES:
         try:
-            c.execute('INSERT OR IGNORE INTO staff (name) VALUES (?)', (name,))
+            c.execute("INSERT OR IGNORE INTO staff (name, department) VALUES (?, 'rental')", (name,))
         except Exception:
             pass
     conn.commit()
+
+    # ⚠️ セールス部門の仮稼働用ダミーデータ（本物のリスト受領後にこの2行を削除）
+    try:
+        n = _seed_sales_demo(c)
+        conn.commit()
+        if n:
+            app.logger.warning(f'[demo] セールス部門のダミーデータを投入しました: {n}台')
+    except Exception as e:
+        app.logger.warning(f'[demo] ダミーデータ投入に失敗: {e}')
 
     base = os.path.dirname(__file__)
     if c.execute('SELECT COUNT(*) FROM vehicles').fetchone()[0] == 0:
@@ -783,9 +919,12 @@ def init_db():
             vf = os.path.join(base, 'data', 'vehicles.json')
         if os.path.exists(vf):
             for v in json.load(open(vf, encoding='utf-8-sig')):
-                c.execute('INSERT OR IGNORE INTO vehicles VALUES (?,?,?,?,?,?)',
+                c.execute('''INSERT OR IGNORE INTO vehicles
+                    (id,number,car_type,year,full_number,inspection_date,department)
+                    VALUES (?,?,?,?,?,?,?)''',
                     (v['id'], v['number'], v.get('car_type',''), v.get('year',''),
-                     v.get('full_number',''), v.get('inspection_date','')))
+                     v.get('full_number',''), v.get('inspection_date',''),
+                     norm_dept(v.get('department'))))
             conn.commit()
 
     if c.execute('SELECT COUNT(*) FROM events').fetchone()[0] == 0:
@@ -816,9 +955,15 @@ def get_vehicle_status(vehicle_id):
     conn.close()
     return dict(row) if row else None
 
-def find_vehicle_by_number(number):
+def find_vehicle_by_number(number, dept=DEFAULT_DEPT):
+    """車番から車両を引く。LINE経由の照合は既定でレンタカー事業部に限定する
+    （両部門で4桁車番が重複しても、既存の動きが変わらないようにするため）"""
     conn = get_db()
-    row = conn.execute('SELECT * FROM vehicles WHERE number=?', (number,)).fetchone()
+    if dept:
+        row = conn.execute('SELECT * FROM vehicles WHERE number=? AND department=?',
+                           (number, dept)).fetchone()
+    else:
+        row = conn.execute('SELECT * FROM vehicles WHERE number=?', (number,)).fetchone()
     conn.close()
     return dict(row) if row else None
 
@@ -1149,16 +1294,16 @@ def process_line_message(text, source_id='', user_name=''):
     if text in ['一覧', '状況', 'status']:
         today = today_jst()
         conn = get_db()
-        total    = conn.execute('SELECT COUNT(*) FROM vehicles').fetchone()[0]
-        rentals  = conn.execute(
-            "SELECT COUNT(DISTINCT vehicle_id) FROM events WHERE status='貸出中' AND start_date<=? AND (end_date IS NULL OR end_date>=?)",
+        # LINEからの照会はレンタカー事業部のみが対象（セールス部門は集計に含めない）
+        total    = conn.execute("SELECT COUNT(*) FROM vehicles WHERE department='rental'").fetchone()[0]
+        _cnt = lambda cond: conn.execute(
+            f"""SELECT COUNT(DISTINCT e.vehicle_id) FROM events e
+                JOIN vehicles v ON v.id = e.vehicle_id AND v.department='rental'
+                WHERE {cond} AND e.start_date<=? AND (e.end_date IS NULL OR e.end_date>=?)""",
             (today, today)).fetchone()[0]
-        reserved = conn.execute(
-            "SELECT COUNT(DISTINCT vehicle_id) FROM events WHERE status='予約済' AND start_date<=? AND (end_date IS NULL OR end_date>=?)",
-            (today, today)).fetchone()[0]
-        repairs  = conn.execute(
-            "SELECT COUNT(DISTINCT vehicle_id) FROM events WHERE status IN ('車検中','点検中','修理中') AND start_date<=? AND (end_date IS NULL OR end_date>=?)",
-            (today, today)).fetchone()[0]
+        rentals  = _cnt("e.status='貸出中'")
+        reserved = _cnt("e.status='予約済'")
+        repairs  = _cnt("e.status IN ('車検中','点検中','修理中')")
         conn.close()
         return (f"📊 {datetime.now(JST).strftime('%m/%d')} 車両状況\n"
                 f"総台数: {total}台\n"
@@ -1327,7 +1472,9 @@ def process_line_message(text, source_id='', user_name=''):
     # ── 解析不能 → None を返して未対応リストへ ──
     return None
 
-LIFF_URL   = 'https://yoshioka-rental-1.onrender.com/liff'
+# LINEのリッチメニュー・フォームボタンから開くURL。
+# 端末に前回の部門が残っていてもレンタカー事業部で開くよう dept を明示する。
+LIFF_URL   = 'https://yoshioka-rental-1.onrender.com/liff?dept=rental'
 LINE_API   = 'https://api.line.me/v2/bot'
 LINE_DATA  = 'https://api-data.line.me/v2/bot'
 
@@ -1472,6 +1619,27 @@ def save_setting(key, value):
     conn.commit()
     conn.close()
 
+def dept_group_id(dept):
+    """部門ごとの通知先グループID。
+    セールス部門は既定で通知しない（レンタカーのグループLINEを汚さないため）。
+    将来セールス用のグループを使う場合は settings に line_group_id_sales を入れる。"""
+    if norm_dept(dept) == 'sales':
+        return get_setting('line_group_id_sales')
+    return get_setting('line_group_id')
+
+def push_to_dept_group(dept, message):
+    """部門のグループLINEへ通知。送信したら True"""
+    gid = dept_group_id(dept)
+    if gid and LINE_CHANNEL_TOKEN:
+        send_line_push(gid, message)
+        return True
+    return False
+
+def vehicle_dept(conn, vehicle_id):
+    """車両IDから部門を引く（見つからなければレンタカー扱い）"""
+    row = conn.execute('SELECT department FROM vehicles WHERE id=?', (vehicle_id,)).fetchone()
+    return norm_dept(row['department'] if row else None)
+
 def send_line_notify(message):
     if not LINE_NOTIFY_TOKEN:
         return
@@ -1485,8 +1653,16 @@ def send_line_notify(message):
 @app.route('/api/vehicles')
 @login_required
 def api_vehicles():
+    """車両一覧。?dept=rental|sales で部門を絞る（未指定は従来どおり全件）"""
+    dept = req_dept()
     conn = get_db()
-    rows = [dict(r) for r in conn.execute('SELECT * FROM vehicles ORDER BY CAST(number AS INTEGER)').fetchall()]
+    if dept:
+        rows = [dict(r) for r in conn.execute(
+            'SELECT * FROM vehicles WHERE department=? ORDER BY CAST(number AS INTEGER)',
+            (dept,)).fetchall()]
+    else:
+        rows = [dict(r) for r in conn.execute(
+            'SELECT * FROM vehicles ORDER BY CAST(number AS INTEGER)').fetchall()]
     conn.close()
     return jsonify(rows)
 
@@ -1568,17 +1744,17 @@ def _build_line_msg(num, car_type, status, staff, client, start_d, end_d, catego
 
 def _event_summary_line(d, conn):
     """イベントのサマリ文字列を生成してグループLINEに送信"""
-    v = conn.execute('SELECT number, car_type FROM vehicles WHERE id=?', (d['vehicle_id'],)).fetchone()
+    v = conn.execute('SELECT number, car_type, department FROM vehicles WHERE id=?',
+                     (d['vehicle_id'],)).fetchone()
     num      = v['number'] if v else str(d['vehicle_id'])
     car_type = v['car_type'] if v else ''
+    dept     = norm_dept(v['department'] if v else None)
     msg = _build_line_msg(
         num, car_type,
         d.get('status', ''), d.get('staff', ''), d.get('client', ''),
         d.get('start_date') or '', d.get('end_date') or '', d.get('category', '')
     )
-    group_id = get_setting('line_group_id')
-    if group_id and LINE_CHANNEL_TOKEN:
-        send_line_push(group_id, msg)
+    push_to_dept_group(dept, msg)
 
 @app.route('/api/events', methods=['POST'])
 @login_required
@@ -1683,16 +1859,22 @@ def _stock_marks(v, ev):
     if v.get('studless'):                  m += '●'
     return m
 
-def resolve_vehicle_states(date=None):
+def resolve_vehicle_states(date=None, dept=DEFAULT_DEPT):
     """指定日時点の全車両の状態を確定する。
 
     各車両につき「その日にかかっているイベント」のうち登録が最も新しい1件を採用
     （＝新しい予約・修正が常に優先）。該当なしなら在庫扱い。
+    dept を指定するとその部門の車両だけを対象にする（既定はレンタカー事業部）。
     """
     d = date or today_jst()
     conn = get_db()
-    vehicles = [dict(r) for r in conn.execute(
-        'SELECT * FROM vehicles ORDER BY CAST(number AS INTEGER)').fetchall()]
+    if dept:
+        vehicles = [dict(r) for r in conn.execute(
+            'SELECT * FROM vehicles WHERE department=? ORDER BY CAST(number AS INTEGER)',
+            (dept,)).fetchall()]
+    else:
+        vehicles = [dict(r) for r in conn.execute(
+            'SELECT * FROM vehicles ORDER BY CAST(number AS INTEGER)').fetchall()]
     rows = conn.execute(
         '''SELECT * FROM events
            WHERE start_date<=? AND (end_date IS NULL OR end_date>=?)
@@ -1717,8 +1899,9 @@ def resolve_vehicle_states(date=None):
     return out
 
 def build_morning_report(date=None):
+    """朝一の一斉ライン本文。レンタカー事業部のみが対象（セールス部門は配信しない）"""
     d = date or today_jst()
-    states = resolve_vehicle_states(d)
+    states = resolve_vehicle_states(d, dept='rental')
 
     stock = {'京都': [], '滋賀': []}
     resv  = {'京都': {}, '滋賀': {}}
@@ -2012,7 +2195,7 @@ h1{font-size:18px;color:#1a3a5c;text-align:center;margin-bottom:6px}
 
   <div id="qr"></div>
 
-  <a class="btn" href="/liff">📱 今すぐフォームを開く</a>
+  <a class="btn" href="/liff?dept=rental">📱 今すぐフォームを開く</a>
 
   <div class="steps">
     <h2>📲 ホーム画面への追加方法</h2>
@@ -2037,7 +2220,7 @@ h1{font-size:18px;color:#1a3a5c;text-align:center;margin-bottom:6px}
 <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
 <script>
 new QRCode(document.getElementById('qr'), {
-  text: window.location.origin + '/liff',
+  text: window.location.origin + '/liff?dept=rental',
   width: 180, height: 180,
   colorDark: '#1a3a5c', colorLight: '#ffffff',
   correctLevel: QRCode.CorrectLevel.M
@@ -2071,13 +2254,37 @@ def api_liff_clients():
 
 @app.route('/api/liff/vehicles')
 def api_liff_vehicles():
-    """車番検索（LIFF用・認証不要）"""
+    """車番検索（LIFF用・認証不要）。?dept= で部門内に限定する"""
     number = request.args.get('number', '').strip()
     if not number:
         return jsonify([])
+    dept = req_dept()
     conn = get_db()
-    rows = [dict(r) for r in conn.execute(
-        'SELECT * FROM vehicles WHERE number=? ORDER BY id', (number,)).fetchall()]
+    if dept:
+        rows = [dict(r) for r in conn.execute(
+            'SELECT * FROM vehicles WHERE number=? AND department=? ORDER BY id',
+            (number, dept)).fetchall()]
+    else:
+        rows = [dict(r) for r in conn.execute(
+            'SELECT * FROM vehicles WHERE number=? ORDER BY id', (number,)).fetchall()]
+    conn.close()
+    return jsonify(rows)
+
+@app.route('/api/liff/staff')
+def api_liff_staff():
+    """社員マスタ（LIFF用・認証不要）。?dept= で部門を絞る"""
+    dept = req_dept()
+    conn = get_db()
+    try:
+        if dept:
+            rows = [dict(r) for r in conn.execute(
+                'SELECT id, name, department FROM staff WHERE department=? ORDER BY id',
+                (dept,)).fetchall()]
+        else:
+            rows = [dict(r) for r in conn.execute(
+                'SELECT id, name, department FROM staff ORDER BY id').fetchall()]
+    except Exception:
+        rows = []
     conn.close()
     return jsonify(rows)
 
@@ -2147,14 +2354,12 @@ def api_liff_submit():
 
     msg = register_event(v, status, state)
 
-    # グループLINEに通知
-    group_id = get_setting('line_group_id')
-    line_sent = False
-    if group_id and LINE_CHANNEL_TOKEN:
-        send_line_push(group_id, msg)
-        line_sent = True
-    else:
-        app.logger.warning(f'[liff/submit] LINE not sent: group_id={group_id!r} token={bool(LINE_CHANNEL_TOKEN)}')
+    # グループLINEに通知（部門ごとの通知先。セールス部門は既定で送信しない）
+    dept      = norm_dept(v.get('department'))
+    line_sent = push_to_dept_group(dept, msg)
+    if not line_sent:
+        app.logger.warning(f'[liff/submit] LINE not sent: dept={dept} '
+                           f'group_id={dept_group_id(dept)!r} token={bool(LINE_CHANNEL_TOKEN)}')
 
     return jsonify({'ok': True, 'message': msg, 'line_sent': line_sent})
 
@@ -2201,9 +2406,14 @@ def api_liff_cancel():
     client = ev['client'] or ''
     start_d = ev['start_date'] or ''
     msg = f'🚗 {num} {ctype} ❌キャンセル\n{client}\n{_fmt_date(start_d)}〜 取り消し'
-    group_id = os.environ.get('LINE_GROUP_ID', '')
-    if LINE_CHANNEL_TOKEN and group_id:
-        send_line_push(group_id, msg)
+    dept = norm_dept(v['department'] if v else None)
+    if dept == 'rental':
+        # レンタカー事業部は従来どおり環境変数の宛先（挙動を変えない）
+        group_id = os.environ.get('LINE_GROUP_ID', '')
+        if LINE_CHANNEL_TOKEN and group_id:
+            send_line_push(group_id, msg)
+    else:
+        push_to_dept_group(dept, msg)
     return jsonify({'ok': True})
 
 # ── 車両マスタ一括追加（管理者専用） ────────────────────────
@@ -2212,24 +2422,86 @@ def admin_add_vehicles():
     key = request.headers.get('X-Admin-Key', '')
     if key != ADMIN_PASS:
         return jsonify({'error': 'Unauthorized'}), 401
-    items = request.get_json() or []
+    payload = request.get_json() or []
+    # [{...}] でも {"dept":"sales","items":[...]} でも受け付ける
+    if isinstance(payload, dict):
+        items = payload.get('items') or []
+        base_dept = norm_dept(payload.get('dept') or payload.get('department'))
+    else:
+        items = payload
+        base_dept = norm_dept(request.args.get('dept'))
     conn = get_db()
     c = conn.cursor()
     added, skipped = 0, 0
     for item in items:
-        exists = c.execute('SELECT id FROM vehicles WHERE number=?', (item['number'],)).fetchone()
+        dept = norm_dept(item.get('department'), base_dept)
+        # 重複判定は同一部門内のみ（部門が違えば同じ車番でも別車両）
+        exists = c.execute('SELECT id FROM vehicles WHERE number=? AND department=?',
+                           (item['number'], dept)).fetchone()
         if exists:
             skipped += 1
             continue
         # 新規IDを最大値+1で割り当て
         max_id = c.execute('SELECT MAX(id) FROM vehicles').fetchone()[0] or 0
-        c.execute('INSERT INTO vehicles (id,number,car_type,year,full_number,inspection_date) VALUES (?,?,?,?,?,?)',
+        c.execute('INSERT INTO vehicles (id,number,car_type,year,full_number,inspection_date,region,car_category,department) VALUES (?,?,?,?,?,?,?,?,?)',
             (max_id + 1, item['number'], item.get('car_type',''),
-             item.get('year',''), item.get('full_number',''), item.get('inspection_date','')))
+             item.get('year',''), item.get('full_number',''), item.get('inspection_date',''),
+             item.get('region',''), item.get('car_category',''), dept))
         added += 1
     conn.commit()
     conn.close()
     return jsonify({'added': added, 'skipped': skipped})
+
+# ── セールス部門データの全削除（管理者専用・ダミー撤去用） ──
+@app.route('/api/admin/clear-sales', methods=['POST'])
+def admin_clear_sales():
+    """セールス部門の車両・イベント・社員をすべて削除する。
+    仮稼働のダミーを消して本物の30台を入れ直すときに使う。
+    レンタカー事業部のデータには一切触れない。"""
+    key = request.headers.get('X-Admin-Key','') or (request.get_json(silent=True) or {}).get('key','')
+    if key != ADMIN_PASS:
+        return jsonify({'error': 'Unauthorized'}), 401
+    conn = get_db()
+    c = conn.cursor()
+    n_ev = c.execute('''DELETE FROM events WHERE vehicle_id IN
+                        (SELECT id FROM vehicles WHERE department='sales')''').rowcount
+    n_v  = c.execute("DELETE FROM vehicles WHERE department='sales'").rowcount
+    n_s  = c.execute("DELETE FROM staff WHERE department='sales'").rowcount
+    # 再デプロイでダミーが復活しないようフラグは残したまま
+    conn.commit()
+    conn.close()
+    return jsonify({'deleted_vehicles': n_v, 'deleted_events': n_ev, 'deleted_staff': n_s})
+
+# ── 社員マスタ一括追加（管理者専用） ────────────────────────
+@app.route('/api/admin/add-staff', methods=['POST'])
+def admin_add_staff():
+    """社員をまとめて登録する。
+    payload: {"dept":"sales","names":["山田太郎", ...]} または ["山田太郎", ...]"""
+    key = request.headers.get('X-Admin-Key', '')
+    if key != ADMIN_PASS:
+        return jsonify({'error': 'Unauthorized'}), 401
+    payload = request.get_json() or {}
+    if isinstance(payload, list):
+        names, dept = payload, norm_dept(request.args.get('dept'))
+    else:
+        names = payload.get('names') or []
+        dept  = norm_dept(payload.get('dept') or payload.get('department'))
+    conn = get_db()
+    c = conn.cursor()
+    added, skipped = 0, []
+    for n in names:
+        name = (n or '').strip()
+        if not name:
+            continue
+        dup = c.execute('SELECT department FROM staff WHERE name=?', (name,)).fetchone()
+        if dup:
+            skipped.append(name)
+            continue
+        c.execute('INSERT INTO staff (name, department) VALUES (?,?)', (name, dept))
+        added += 1
+    conn.commit()
+    conn.close()
+    return jsonify({'added': added, 'dept': dept, 'skipped': skipped})
 
 # ── 車両メタデータ一括更新（管理者専用） ────────────────────
 @app.route('/api/admin/update-vehicle-meta', methods=['POST'])
@@ -2241,13 +2513,15 @@ def admin_update_vehicle_meta():
     conn = get_db()
     c = conn.cursor()
     updated, not_found = 0, []
+    dept = norm_dept(request.args.get('dept'))   # 既定はレンタカー事業部
     for item in items:
-        row = c.execute('SELECT id FROM vehicles WHERE number=?', (item['number'],)).fetchone()
+        row = c.execute('SELECT id FROM vehicles WHERE number=? AND department=?',
+                        (item['number'], dept)).fetchone()
         if not row:
             not_found.append(item['number'])
             continue
-        c.execute('UPDATE vehicles SET car_category=?, inspection_date=? WHERE number=?',
-                  (item.get('car_category',''), item.get('inspection_date',''), item['number']))
+        c.execute('UPDATE vehicles SET car_category=?, inspection_date=? WHERE number=? AND department=?',
+                  (item.get('car_category',''), item.get('inspection_date',''), item['number'], dept))
         updated += 1
     conn.commit()
     conn.close()
@@ -2262,11 +2536,15 @@ def admin_import_status():
     items = request.get_json() or []
     conn = get_db()
     c = conn.cursor()
-    c.execute('DELETE FROM events')
+    dept = norm_dept(request.args.get('dept'))   # 既定はレンタカー事業部
+    # 対象部門の車両のイベントだけを入れ替える（他部門のデータは残す）
+    c.execute('''DELETE FROM events WHERE vehicle_id IN
+                 (SELECT id FROM vehicles WHERE department=?)''', (dept,))
     inserted, not_found = 0, []
     today = '2026-05-27'
     for item in items:
-        v = c.execute('SELECT id FROM vehicles WHERE number=?', (item['number'],)).fetchone()
+        v = c.execute('SELECT id FROM vehicles WHERE number=? AND department=?',
+                      (item['number'], dept)).fetchone()
         if not v:
             not_found.append(item['number'])
             continue
@@ -2298,19 +2576,22 @@ def admin_import_grid():
     items = body.get('items') or []
     conn = get_db()
     c = conn.cursor()
+    dept = norm_dept(body.get('dept') or body.get('department'))   # 既定はレンタカー事業部
     reset = body.get('reset', True)
     if reset:
-        c.execute("DELETE FROM events WHERE category='Excel取込'")
+        c.execute('''DELETE FROM events WHERE category='Excel取込' AND vehicle_id IN
+                     (SELECT id FROM vehicles WHERE department=?)''', (dept,))
     now = datetime.now(JST).strftime('%Y-%m-%d %H:%M:%S')
     inserted, not_found = 0, []
     for it in items:
         v = None
         # 同じ車番が複数存在する（分類番号違い）ため、まず登録番号全体で照合
         if it.get('full_number'):
-            v = c.execute('SELECT id FROM vehicles WHERE REPLACE(full_number," ","")=?',
-                          (str(it['full_number']).replace(' ', ''),)).fetchone()
+            v = c.execute('SELECT id FROM vehicles WHERE REPLACE(full_number," ","")=? AND department=?',
+                          (str(it['full_number']).replace(' ', ''), dept)).fetchone()
         if not v:
-            v = c.execute('SELECT id FROM vehicles WHERE number=?', (str(it['number']),)).fetchone()
+            v = c.execute('SELECT id FROM vehicles WHERE number=? AND department=?',
+                          (str(it['number']), dept)).fetchone()
         if not v:
             not_found.append(it['number']); continue
         c.execute('''INSERT INTO events
@@ -2377,8 +2658,15 @@ def master_page():
 @app.route('/api/master/vehicles', methods=['GET'])
 @login_required
 def master_vehicles_get():
+    dept = req_dept()
     conn = get_db()
-    rows = [dict(r) for r in conn.execute('SELECT * FROM vehicles ORDER BY CAST(number AS INTEGER)').fetchall()]
+    if dept:
+        rows = [dict(r) for r in conn.execute(
+            'SELECT * FROM vehicles WHERE department=? ORDER BY CAST(number AS INTEGER)',
+            (dept,)).fetchall()]
+    else:
+        rows = [dict(r) for r in conn.execute(
+            'SELECT * FROM vehicles ORDER BY CAST(number AS INTEGER)').fetchall()]
     conn.close()
     return jsonify(rows)
 
@@ -2389,11 +2677,14 @@ def master_vehicles_post():
     number = (d.get('number') or '').strip()
     if not number:
         return jsonify({'error': 'number required'}), 400
+    # 同じ4桁車番でも分類番号違いの車両が存在しうるため、重複は許容する
+    dept = norm_dept(d.get('department'))
     conn = get_db()
-    conn.execute('INSERT OR IGNORE INTO vehicles (number, car_type, region, studless, is_rental_other, car_category) VALUES (?,?,?,?,?,?)',
-                 (number, d.get('car_type',''), d.get('region',''), 0, 0, d.get('car_category','')))
+    cur = conn.execute('INSERT INTO vehicles (number, car_type, region, studless, is_rental_other, car_category, department) VALUES (?,?,?,?,?,?,?)',
+                       (number, d.get('car_type',''), d.get('region',''), 0, 0,
+                        d.get('car_category',''), dept))
     conn.commit()
-    row = dict(conn.execute('SELECT * FROM vehicles WHERE number=?', (number,)).fetchone())
+    row = dict(conn.execute('SELECT * FROM vehicles WHERE id=?', (cur.lastrowid,)).fetchone())
     conn.close()
     return jsonify(row)
 
@@ -2402,9 +2693,11 @@ def master_vehicles_post():
 def master_vehicles_put(vid):
     d = request.get_json() or {}
     conn = get_db()
-    conn.execute('UPDATE vehicles SET number=?,car_type=?,region=?,car_category=?,studless=?,is_rental_other=? WHERE id=?',
+    cur_row = conn.execute('SELECT department FROM vehicles WHERE id=?', (vid,)).fetchone()
+    dept = norm_dept(d.get('department'), norm_dept(cur_row['department'] if cur_row else None))
+    conn.execute('UPDATE vehicles SET number=?,car_type=?,region=?,car_category=?,studless=?,is_rental_other=?,department=? WHERE id=?',
                  (d.get('number',''), d.get('car_type',''), d.get('region',''), d.get('car_category',''),
-                  1 if d.get('studless') else 0, 1 if d.get('is_rental_other') else 0, vid))
+                  1 if d.get('studless') else 0, 1 if d.get('is_rental_other') else 0, dept, vid))
     conn.commit()
     row = dict(conn.execute('SELECT * FROM vehicles WHERE id=?', (vid,)).fetchone())
     conn.close()
@@ -2470,11 +2763,16 @@ def master_clients_delete(cid):
 @app.route('/api/master/staff', methods=['GET'])
 @login_required
 def master_staff_get():
+    dept = req_dept()
     conn = get_db()
     try:
-        rows = [dict(r) for r in conn.execute('SELECT * FROM staff ORDER BY id').fetchall()]
+        if dept:
+            rows = [dict(r) for r in conn.execute(
+                'SELECT * FROM staff WHERE department=? ORDER BY id', (dept,)).fetchall()]
+        else:
+            rows = [dict(r) for r in conn.execute('SELECT * FROM staff ORDER BY id').fetchall()]
     except Exception:
-        rows = [{'id': i+1, 'name': n} for i, n in enumerate(STAFF_NAMES)]
+        rows = [{'id': i+1, 'name': n, 'department': 'rental'} for i, n in enumerate(STAFF_NAMES)]
     conn.close()
     return jsonify(rows)
 
@@ -2485,13 +2783,19 @@ def master_staff_post():
     name = (d.get('name') or '').strip()
     if not name:
         return jsonify({'error': 'name required'}), 400
+    dept = norm_dept(d.get('department'))
     conn = get_db()
     try:
-        conn.execute('INSERT OR IGNORE INTO staff (name) VALUES (?)', (name,))
+        # 氏名はUNIQUE。他部門に同名が居る場合は取り違えを防ぐため明示的に弾く
+        dup = conn.execute('SELECT department FROM staff WHERE name=?', (name,)).fetchone()
+        if dup and norm_dept(dup['department']) != dept:
+            conn.close()
+            return jsonify({'error': f'「{name}」は{DEPARTMENTS[norm_dept(dup["department"])]}に登録済みです'}), 400
+        conn.execute('INSERT OR IGNORE INTO staff (name, department) VALUES (?,?)', (name, dept))
         conn.commit()
         row = dict(conn.execute('SELECT * FROM staff WHERE name=?', (name,)).fetchone())
     except Exception:
-        row = {'name': name}
+        row = {'name': name, 'department': dept}
     conn.close()
     return jsonify(row)
 
@@ -2501,7 +2805,10 @@ def master_staff_put(sid):
     d = request.get_json() or {}
     conn = get_db()
     try:
-        conn.execute('UPDATE staff SET name=? WHERE id=?', (d.get('name',''), sid))
+        cur_row = conn.execute('SELECT department FROM staff WHERE id=?', (sid,)).fetchone()
+        dept = norm_dept(d.get('department'), norm_dept(cur_row['department'] if cur_row else None))
+        conn.execute('UPDATE staff SET name=?, department=? WHERE id=?',
+                     (d.get('name',''), dept, sid))
         conn.commit()
         row = dict(conn.execute('SELECT * FROM staff WHERE id=?', (sid,)).fetchone())
     except Exception:

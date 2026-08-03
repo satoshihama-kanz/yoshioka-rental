@@ -6,15 +6,88 @@ function fmtUpdated() {
 }
 
 const API = '';
-let vehicles = [];
+let vehicles = [];        // 全部門の車両（APIから取得したまま）
 let events = [];
 let filteredVehicles = [];
 let currentDetailVehicleId = null;
 let calendarOffset = 0;
 let editingEventId = null;
 
+// ====== 部門（事業部） ======
+const DEPT_LABELS = { rental: 'レンタカー事業部', sales: 'セールス部門' };
+const DEPT_DEFAULT = 'rental';
+
+function initialDept() {
+    const q = new URLSearchParams(location.search).get('dept');
+    if (q && DEPT_LABELS[q]) return q;
+    const saved = localStorage.getItem('fleetDept');
+    return (saved && DEPT_LABELS[saved]) ? saved : DEPT_DEFAULT;
+}
+let currentDept = initialDept();
+
+// 現在の部門に属する車両だけを返す（department 未設定はレンタカー扱い）
+function deptVehicles() {
+    return vehicles.filter(v => (v.department || DEPT_DEFAULT) === currentDept);
+}
+
+function applyDeptChrome() {
+    document.body.classList.toggle('dept-sales', currentDept === 'sales');
+    Object.keys(DEPT_LABELS).forEach(d => {
+        const t = document.getElementById('deptTab-' + d);
+        if (t) t.classList.toggle('active', d === currentDept);
+    });
+    const ml = document.getElementById('masterLink');
+    if (ml) ml.href = '/master?dept=' + currentDept;
+}
+
+function switchDept(dept) {
+    if (!DEPT_LABELS[dept] || dept === currentDept) return;
+    currentDept = dept;
+    localStorage.setItem('fleetDept', dept);
+    applyDeptChrome();
+    closeDetail();
+    rebuildTypeFilter();
+    document.getElementById('totalBadge').textContent = deptVehicles().length;
+    loadStaffOptions();
+    applyFilters();
+}
+
+// 車種フィルターの選択肢を現在の部門で作り直す
+function rebuildTypeFilter() {
+    const sel = document.getElementById('filterType');
+    if (!sel) return;
+    const prev = sel.value;
+    const types = [...new Set(deptVehicles().map(v => v.car_type).filter(Boolean))].sort();
+    sel.innerHTML = '<option value="">車種：すべて</option>';
+    types.forEach(t => {
+        const o = document.createElement('option');
+        o.value = t; o.textContent = t;
+        sel.appendChild(o);
+    });
+    sel.value = types.includes(prev) ? prev : '';
+}
+
+// 担当営業プルダウン：レンタカーは従来の固定リスト、セールスは社員マスタから
+let _rentalStaffOptionsHTML = null;
+async function loadStaffOptions() {
+    const sel = document.getElementById('formStaff');
+    if (!sel) return;
+    if (_rentalStaffOptionsHTML === null) _rentalStaffOptionsHTML = sel.innerHTML;
+    if (currentDept === 'rental') { sel.innerHTML = _rentalStaffOptionsHTML; return; }
+    sel.innerHTML = '<option value="">（選択）</option>';
+    try {
+        const list = await fetch(`${API}/api/master/staff?dept=${currentDept}`).then(r => r.json());
+        (Array.isArray(list) ? list : []).forEach(s => {
+            const o = document.createElement('option');
+            o.value = s.name; o.textContent = s.name;
+            sel.appendChild(o);
+        });
+    } catch (e) { console.error('[staff] load error:', e); }
+}
+
 // 初期化
 async function init() {
+    applyDeptChrome();
     const [v, e] = await Promise.all([
         fetch(API + '/api/vehicles').then(r => r.json()),
         fetch(API + '/api/events').then(r => r.json()),
@@ -23,18 +96,13 @@ async function init() {
     vehicles = Array.isArray(v) ? v : [];
     events = Array.isArray(e) ? e : [];
 
-    // 車種フィルター選択肢を生成
-    const types = [...new Set(vehicles.map(v => v.car_type))].sort();
-    const sel = document.getElementById('filterType');
-    types.forEach(t => {
-        const o = document.createElement('option');
-        o.value = t; o.textContent = t;
-        sel.appendChild(o);
-    });
+    // 車種フィルター選択肢を生成（現在の部門のみ）
+    rebuildTypeFilter();
 
-    document.getElementById('totalBadge').textContent = vehicles.length;
+    document.getElementById('totalBadge').textContent = deptVehicles().length;
     document.getElementById('lastUpdated').textContent = fmtUpdated();
 
+    loadStaffOptions();
     applyFilters();
     refreshPendingBadge();
     setInterval(refreshEvents, 30000);
@@ -108,7 +176,7 @@ function applyFilters() {
     const statusFilter = document.getElementById('filterStatus').value;
     const search = document.getElementById('filterSearch').value.trim().toLowerCase();
 
-    filteredVehicles = vehicles.filter(v => {
+    filteredVehicles = deptVehicles().filter(v => {
         if (typeFilter && v.car_type !== typeFilter) return false;
         if (search && !v.number.toLowerCase().includes(search) && !v.car_type.toLowerCase().includes(search)) return false;
         if (statusFilter) {
@@ -119,7 +187,7 @@ function applyFilters() {
     });
 
     const cnt = filteredVehicles.length;
-    document.getElementById('filterCount').textContent = cnt < vehicles.length ? `${cnt}件表示` : '';
+    document.getElementById('filterCount').textContent = cnt < deptVehicles().length ? `${cnt}件表示` : '';
     renderCurrentPage();
 }
 
@@ -146,7 +214,7 @@ function filterByStatus(status) {
     // 車検中クリック時は点検中も含めて表示
     if (status === '車検中') {
         const todayStr = today();
-        filteredVehicles = vehicles.filter(v => {
+        filteredVehicles = deptVehicles().filter(v => {
             const { status: s } = getVehicleCurrentStatus(v.id);
             return s === '車検中' || s === '点検中';
         });
@@ -612,6 +680,7 @@ function renderDetail(vehicleId) {
     document.getElementById('detailNumber').textContent = v.number;
     document.getElementById('detailType').textContent = v.car_type;
     document.getElementById('detailVehicleInfo').innerHTML = `
+        <div>部門: <strong>${DEPT_LABELS[v.department || DEPT_DEFAULT]}</strong></div>
         <div>ナンバー: <strong>${v.full_number || v.number}</strong></div>
         <div>年式: ${v.year || '不明'}</div>
         <div>車検満了: ${v.inspection_date ? fmtDateFull(v.inspection_date) : '未登録'}</div>
@@ -644,14 +713,17 @@ function renderDetail(vehicleId) {
 // ====== LIFFフォームを開く ======
 function openLiffForm(vehicleId) {
     const v = vehicleId ? vehicles.find(x => x.id == vehicleId) : null;
-    const url = v ? `/liff?vehicle=${encodeURIComponent(v.number)}` : '/liff';
+    const dept = v ? (v.department || DEPT_DEFAULT) : currentDept;
+    const url = v
+        ? `/liff?dept=${dept}&vehicle=${encodeURIComponent(v.number)}`
+        : `/liff?dept=${dept}`;
     window.open(url, '_blank');
 }
 
 // ====== 状態登録モーダル ======
 function openAddModal(vehicleId) {
     editingEventId = null;
-    document.getElementById('modalTitle').textContent = '車両状態を登録';
+    document.getElementById('modalTitle').textContent = `車両状態を登録（${DEPT_LABELS[currentDept]}）`;
     const numInput = document.getElementById('formVehicleNumber');
 
     if (vehicleId) {
@@ -687,7 +759,8 @@ function closeAddModal() {
 
 function onVehicleNumberInput() {
     const num = document.getElementById('formVehicleNumber').value.trim();
-    const v = vehicles.find(x => x.number === num);
+    // 車番の照合は表示中の部門内だけで行う（両部門で同じ4桁があっても取り違えない）
+    const v = deptVehicles().find(x => x.number === num);
     const sug = document.getElementById('vehicleSuggest');
     if (v) { sug.textContent = `✓ ${v.car_type} (${v.full_number || v.number})`; sug.style.color = '#4CAF50'; }
     else if (num.length >= 3) { sug.textContent = '該当車両なし'; sug.style.color = '#f44336'; }
@@ -702,8 +775,8 @@ function onStatusChange() {
 
 async function saveEvent() {
     const numInput = document.getElementById('formVehicleNumber').value.trim();
-    const v = vehicles.find(x => x.number === numInput);
-    if (!v) { alert('車両番号が見つかりません'); return; }
+    const v = deptVehicles().find(x => x.number === numInput);
+    if (!v) { alert(`車両番号が見つかりません（${DEPT_LABELS[currentDept]}）`); return; }
 
     const payload = {
         vehicle_id: v.id,

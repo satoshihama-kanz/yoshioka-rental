@@ -40,10 +40,23 @@ input:focus,select:focus,textarea:focus{outline:none;border-color:#1a3a5c}
 select option[value=""]{color:#aaa}
 .hide{display:none!important}
 .vehicle-select-wrap{margin-top:8px}
+/* 部門切替 */
+.dept-tabs{display:flex;background:#12293f}
+.dept-tab{flex:1 1 0;text-align:center;padding:10px 4px;cursor:pointer;font-size:13px;font-weight:bold;
+  color:rgba(255,255,255,0.55);border-bottom:3px solid transparent}
+.dept-tab.active{color:#fff;background:rgba(255,255,255,0.12);border-bottom-color:#4FC3F7}
+#deptTab-sales.active{border-bottom-color:#FFB74D}
+body.dept-sales .header{background:#4a3410}
+body.dept-sales .dept-tabs{background:#3a280c}
+body.dept-sales .action-btn.selected{border-color:#4a3410;background:#4a3410}
 </style>
 </head>
 <body>
 <div class="header"><h1>🚗 車両状態登録フォーム</h1></div>
+<div class="dept-tabs">
+  <div class="dept-tab active" id="deptTab-rental" onclick="switchDept('rental')">🚙 レンタカー</div>
+  <div class="dept-tab" id="deptTab-sales" onclick="switchDept('sales')">🏢 セールス代車</div>
+</div>
 <div class="container">
 
   <!-- 社外借り -->
@@ -229,6 +242,62 @@ let selectedAction    = null;
 let lookupTimer       = null;
 let liffClientList    = [];
 
+// ── 部門（事業部） ──
+const DEPT_LABELS = { rental: 'レンタカー事業部', sales: 'セールス部門' };
+const DEPT_DEFAULT = 'rental';
+function initialDept() {
+  const q = new URLSearchParams(location.search).get('dept');
+  if (q && DEPT_LABELS[q]) return q;
+  const saved = localStorage.getItem('fleetDept');
+  return (saved && DEPT_LABELS[saved]) ? saved : DEPT_DEFAULT;
+}
+let currentDept = initialDept();
+
+function applyDeptChrome() {
+  document.body.classList.toggle('dept-sales', currentDept === 'sales');
+  Object.keys(DEPT_LABELS).forEach(d => {
+    const t = document.getElementById('deptTab-' + d);
+    if (t) t.classList.toggle('active', d === currentDept);
+  });
+}
+
+function switchDept(dept) {
+  if (!DEPT_LABELS[dept] || dept === currentDept) return;
+  currentDept = dept;
+  localStorage.setItem('fleetDept', dept);
+  applyDeptChrome();
+  loadStaffOptions();
+  // 部門が変わると車番の意味も変わるので選択をリセットする
+  document.getElementById('vehicleNumber').value = '';
+  lookupVehicle();
+}
+
+// 担当者プルダウン：レンタカーは従来の固定リスト、セールスは社員マスタから取得
+let _rentalStaffOptionsHTML = null;
+async function loadStaffOptions() {
+  const sel = document.getElementById('staffSelect');
+  if (!sel) return;
+  if (_rentalStaffOptionsHTML === null) _rentalStaffOptionsHTML = sel.innerHTML;
+  if (currentDept === 'rental') {
+    sel.innerHTML = _rentalStaffOptionsHTML;
+    staffChanged();
+    return;
+  }
+  sel.innerHTML = '<option value="">選択してください</option>';
+  try {
+    const list = await fetch(`${API_BASE}/api/liff/staff?dept=${currentDept}`).then(r => r.json());
+    (Array.isArray(list) ? list : []).forEach(s => {
+      const o = document.createElement('option');
+      o.value = s.name; o.textContent = s.name;
+      sel.appendChild(o);
+    });
+  } catch (e) { /* 取得失敗時は直接入力のみ */ }
+  const other = document.createElement('option');
+  other.value = '__other__'; other.textContent = 'その他（直接入力）';
+  sel.appendChild(other);
+  staffChanged();
+}
+
 // 取引先マスタ読み込み
 fetch(API_BASE + '/api/liff/clients').then(r => r.json()).then(data => {
     liffClientList = Array.isArray(data) ? data : [];
@@ -302,10 +371,10 @@ function lookupVehicle() {
 
   lookupTimer = setTimeout(async () => {
     try {
-      const res  = await fetch(`${API_BASE}/api/liff/vehicles?number=${encodeURIComponent(num)}`);
+      const res  = await fetch(`${API_BASE}/api/liff/vehicles?number=${encodeURIComponent(num)}&dept=${currentDept}`);
       const data = await res.json();
       if (data.length === 0) {
-        info.textContent = `車番 ${num} は登録されていません`;
+        info.textContent = `車番 ${num} は${DEPT_LABELS[currentDept]}に登録されていません`;
         info.className = 'vehicle-info error';
         selWrap.classList.add('hide');
       } else if (data.length === 1) {
@@ -561,8 +630,10 @@ async function cancelEvent() {
   }
 }
 
-// URLパラメータから車番を自動入力
+// 初期化：部門の反映＋URLパラメータから車番を自動入力
 (function() {
+  applyDeptChrome();
+  loadStaffOptions();
   const params = new URLSearchParams(window.location.search);
   const vnum = params.get('vehicle');
   if (vnum) {

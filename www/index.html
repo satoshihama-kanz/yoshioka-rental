@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>吉岡商会 車両管理システム</title>
-<link rel="stylesheet" href="style.css?v=20260803a">
+<link rel="stylesheet" href="style.css?v=20260803c">
 </head>
 <body>
 
@@ -16,12 +16,18 @@
   <div class="header-right">
     <span class="total-badge" id="totalBadge">全 0 台</span>
     <button class="btn btn-success btn-hdr" onclick="openAddModal()">＋ 登録</button>
-    <button class="btn btn-hdr" style="background:#25D366;color:white;" onclick="sendFormLinkToLine()" title="グループLINEにフォームボタンを送信">📌ﾗｲﾝ</button>
-    <button class="btn btn-hdr" style="background:#FF9800;color:white;" onclick="setupRichMenu()" title="LINEリッチメニュー設定">⚙️</button>
-    <button class="btn btn-hdr" style="background:#3F51B5;color:white;" onclick="openMorningPreview()" title="朝一一斉ラインの内容を事前確認">朝一ﾌﾟﾚﾋﾞｭ</button>
-    <a href="/master" class="btn btn-hdr" style="background:#607D8B;color:white;text-decoration:none;">🗂ﾏｽﾀ</a>
+    <button class="btn btn-hdr dept-rental-only" style="background:#25D366;color:white;" onclick="sendFormLinkToLine()" title="グループLINEにフォームボタンを送信">📌ﾗｲﾝ</button>
+    <button class="btn btn-hdr dept-rental-only" style="background:#FF9800;color:white;" onclick="setupRichMenu()" title="LINEリッチメニュー設定">⚙️</button>
+    <button class="btn btn-hdr dept-rental-only" style="background:#3F51B5;color:white;" onclick="openMorningPreview()" title="朝一一斉ラインの内容を事前確認">朝一ﾌﾟﾚﾋﾞｭ</button>
+    <a href="/master" class="btn btn-hdr" id="masterLink" style="background:#607D8B;color:white;text-decoration:none;">🗂ﾏｽﾀ</a>
   </div>
 </header>
+
+<!-- 部門切替 -->
+<div class="dept-tabs">
+  <div class="dept-tab active" id="deptTab-rental" onclick="switchDept('rental')">🚙 レンタカー事業部</div>
+  <div class="dept-tab" id="deptTab-sales" onclick="switchDept('sales')">🏢 セールス部門（代車）</div>
+</div>
 
 <div class="tabs">
   <div class="tab active" onclick="showPage('dashboard')" style="font-size:11px;">📊 ﾀﾞｯｼｭﾎﾞｰﾄﾞ</div>
@@ -214,6 +220,6 @@
 
 <div id="tooltip" class="tooltip" style="display:none;"></div>
 
-<script src="app.js?v=20260803b"></script>
+<script src="app.js?v=20260803d"></script>
 </body>
 </html>
