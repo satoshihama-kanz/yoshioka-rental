@@ -4,22 +4,22 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>吉岡商会 車両管理システム</title>
-<link rel="stylesheet" href="style.css">
+<link rel="stylesheet" href="style.css?v=20260803a">
 </head>
 <body>
 
 <header>
   <div>
-    <h1>🚗 吉岡商会 車両管理システム</h1>
+    <h1>🚗 吉岡商会<br>車両管理ｼｽﾃﾑ</h1>
     <div class="subtitle" id="lastUpdated"></div>
   </div>
   <div class="header-right">
     <span class="total-badge" id="totalBadge">全 0 台</span>
     <button class="btn btn-success btn-hdr" onclick="openAddModal()">＋ 登録</button>
-    <button class="btn btn-hdr" style="background:#25D366;color:white;" onclick="sendFormLinkToLine()" title="グループLINEにフォームボタンを送信">📌 LINE</button>
+    <button class="btn btn-hdr" style="background:#25D366;color:white;" onclick="sendFormLinkToLine()" title="グループLINEにフォームボタンを送信">📌ﾗｲﾝ</button>
     <button class="btn btn-hdr" style="background:#FF9800;color:white;" onclick="setupRichMenu()" title="LINEリッチメニュー設定">⚙️</button>
-    <button class="btn btn-hdr" style="background:#3F51B5;color:white;font-size:10px;padding:4px 7px;" onclick="openMorningPreview()" title="朝一一斉ラインの内容を事前確認">朝一ﾗｲﾝﾌﾟﾚﾋﾞｭｰ</button>
-    <a href="/master" class="btn btn-hdr" style="background:#607D8B;color:white;text-decoration:none;">🗂 マスタ</a>
+    <button class="btn btn-hdr" style="background:#3F51B5;color:white;" onclick="openMorningPreview()" title="朝一一斉ラインの内容を事前確認">朝一ﾌﾟﾚﾋﾞｭ</button>
+    <a href="/master" class="btn btn-hdr" style="background:#607D8B;color:white;text-decoration:none;">🗂ﾏｽﾀ</a>
   </div>
 </header>
 
@@ -28,11 +28,11 @@
   <div class="tab" onclick="showPage('calendar')" style="font-size:11px;">📅 ｶﾚﾝﾀﾞｰ</div>
 </div>
 
-<div class="filter-bar" style="padding:6px 12px;gap:6px;">
-  <select id="filterType" onchange="applyFilters()" style="font-size:12px;padding:4px 6px;">
+<div class="filter-bar" style="padding:6px 10px;gap:5px;flex-wrap:nowrap;">
+  <select id="filterType" onchange="applyFilters()" style="font-size:11px;padding:3px 4px;min-width:0;flex:1 1 0;">
     <option value="">車種：すべて</option>
   </select>
-  <select id="filterStatus" onchange="applyFilters()" style="font-size:12px;padding:4px 6px;">
+  <select id="filterStatus" onchange="applyFilters()" style="font-size:11px;padding:3px 4px;min-width:0;flex:1 1 0;">
     <option value="">状態：すべて</option>
     <option value="在庫">在庫</option>
     <option value="貸出中">貸出中</option>
@@ -41,9 +41,9 @@
     <option value="点検中">点検中</option>
     <option value="修理中">修理中</option>
   </select>
-  <input type="text" id="filterSearch" placeholder="番号・車種名…" oninput="applyFilters()" style="width:120px;font-size:12px;padding:4px 6px;">
-  <button class="btn btn-outline btn-sm" onclick="clearFilters()" style="font-size:11px;padding:3px 8px;">クリア</button>
-  <span id="filterCount" style="font-size:11px;color:#888;"></span>
+  <input type="text" id="filterSearch" placeholder="番号・車種名…" oninput="applyFilters()" style="font-size:11px;padding:3px 4px;min-width:0;flex:1 1 0;">
+  <button class="btn btn-outline btn-sm" onclick="clearFilters()" style="font-size:11px;padding:3px 7px;white-space:nowrap;flex:0 0 auto;">ｸﾘｱ</button>
+  <span id="filterCount" style="font-size:10px;color:#888;white-space:nowrap;flex:0 0 auto;"></span>
 </div>
 
 <!-- ダッシュボード -->

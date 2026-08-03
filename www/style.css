@@ -3,7 +3,7 @@ body { font-family: 'Meiryo', 'メイリオ', sans-serif; background: #f0f2f5; c
 
 /* ヘッダー */
 header { background: #1a3a5c; color: white; padding: 12px 20px; display: flex; align-items: center; justify-content: space-between; box-shadow: 0 2px 8px rgba(0,0,0,0.3); }
-header h1 { font-size: 18px; font-weight: bold; }
+header h1 { font-size: 16px; font-weight: bold; line-height: 1.25; }
 header .subtitle { font-size: 12px; opacity: 0.8; margin-top: 2px; }
 .header-right { display: flex; align-items: center; gap: 12px; }
 .total-badge { background: #2196F3; padding: 4px 12px; border-radius: 20px; font-size: 13px; }
@@ -35,15 +35,15 @@ header .subtitle { font-size: 12px; opacity: 0.8; margin-top: 2px; }
 .page.active { display: block; }
 
 /* サマリーカード */
-.summary-cards { display: flex; gap: 12px; margin-bottom: 16px; flex-wrap: wrap; }
-.card { background: white; border-radius: 10px; padding: 14px 18px; flex: 1; min-width: 120px; box-shadow: 0 1px 4px rgba(0,0,0,0.1); border-left: 5px solid #ccc; }
+.summary-cards { display: flex; gap: 6px; margin-bottom: 10px; flex-wrap: wrap; }
+.card { background: white; border-radius: 10px; padding: 8px 10px; flex: 1; min-width: 84px; box-shadow: 0 1px 4px rgba(0,0,0,0.1); border-left: 5px solid #ccc; }
 .card.available { border-left-color: #4CAF50; }
 .card.rented    { border-left-color: #2196F3; }
 .card.reserved  { border-left-color: #FF9800; }
 .card.inspection{ border-left-color: #9C27B0; }
 .card.repair    { border-left-color: #f44336; }
-.card-num { font-size: 28px; font-weight: bold; }
-.card-label { font-size: 12px; color: #666; margin-top: 2px; }
+.card-num { font-size: 15px; font-weight: bold; line-height: 1.2; }
+.card-label { font-size: 10px; color: #666; margin-top: 1px; }
 .card.available .card-num { color: #4CAF50; }
 .card.rented    .card-num { color: #2196F3; }
 .card.reserved  .card-num { color: #FF9800; }
@@ -171,14 +171,18 @@ thead .cal-vehicle-col { position: sticky; left: 0; top: 0; z-index: 3; backgrou
 .loading { text-align: center; padding: 40px; color: #888; font-size: 16px; }
 
 /* ヘッダーボタン スマホ最適化 */
-.btn-hdr { padding: 5px 10px; font-size: 12px; }
+.btn-hdr { padding: 5px 9px; font-size: 12px; white-space: nowrap; }
 @media (max-width: 600px) {
   header { padding: 8px 10px; }
-  header h1 { font-size: 13px; }
+  header h1 { font-size: 12px; }
   header .subtitle { font-size: 10px; }
   .header-right { gap: 5px; }
   .total-badge { font-size: 11px; padding: 3px 7px; }
-  .btn-hdr { padding: 5px 7px; font-size: 11px; }
+  .btn-hdr { padding: 4px 6px; font-size: 10px; }
+  .summary-cards { gap: 4px; }
+  .card { padding: 6px 4px; min-width: 58px; text-align: center; border-left-width: 3px; }
+  .card-num { font-size: 14px; }
+  .card-label { font-size: 9px; }
 }
 
 /* 車両一覧テーブル（1行1台） */
