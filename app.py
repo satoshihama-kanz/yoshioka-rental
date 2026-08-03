@@ -723,23 +723,48 @@ _SALES_DEMO_VEHICLES = [
 
 # (車番, 状態, 開始日オフセット, 終了日オフセット or None, 担当, 顧客, 適用)
 _SALES_DEMO_EVENTS = [
-    ('8001', '貸出中', -4,  6,   '岡田 涼太',   'ｻﾝﾌﾟﾙ自動車',   '代車'),
-    ('8003', '貸出中', -2,  12,  '西村 綾',     'ﾃｽﾄ工業',       '代車'),
-    ('8005', '貸出中', -9,  3,   '森本 大輔',   'ﾃﾞﾓﾓｰﾀｰｽ',     '損保'),
-    ('8009', '貸出中', -1,  20,  '中井 千夏',   'ｻﾝﾌﾟﾙ商会',     'ﾏﾝｽﾘｰ'),
-    ('8016', '貸出中', -6,  8,   '山下 拓也',   'ﾃｽﾄ運輸',       '代車'),
-    ('8018', '貸出中', -3,  4,   '藤原 みなみ', 'ｻﾝﾌﾟﾙ建設',     '代車'),
-    ('8024', '貸出中', -12, 2,   '高橋 誠',     'ﾃﾞﾓ商事',       '損保'),
-    ('8026', '貸出中', -5,  15,  '小川 由紀',   'ｻﾝﾌﾟﾙ電機',     'ﾏﾝｽﾘｰ'),
-    ('8002', '予約済', 2,   9,   '岡田 涼太',   'ﾃｽﾄ自動車販売', '代車'),
-    ('8010', '予約済', 5,   11,  '中井 千夏',   'ｻﾝﾌﾟﾙ興業',     '代車'),
-    ('8019', '予約済', 1,   6,   '山下 拓也',   'ﾃﾞﾓ物産',       '損保'),
-    ('8027', '予約済', 7,   14,  '高橋 誠',     'ﾃｽﾄ産業',       '代車'),
+    ('8001', '貸出中', -4,  6,   '岡田 涼太',   'ｻﾝﾌﾟﾙ自動車',   '車検'),
+    ('8003', '貸出中', -2,  12,  '西村 綾',     'ﾃｽﾄ工業',       '一般修理'),
+    ('8005', '貸出中', -17, 3,   '森本 大輔',   'ﾃﾞﾓﾓｰﾀｰｽ',     '一般修理'),   # 15日超（赤字）
+    ('8009', '貸出中', -1,  20,  '中井 千夏',   'ｻﾝﾌﾟﾙ商会',     '新規新車'),
+    ('8016', '貸出中', -6,  8,   '山下 拓也',   'ﾃｽﾄ運輸',       '点検'),
+    ('8018', '貸出中', -3,  4,   '藤原 みなみ', 'ｻﾝﾌﾟﾙ建設',     '車検'),
+    ('8024', '貸出中', -23, 2,   '高橋 誠',     'ﾃﾞﾓ商事',       '乗り換え新車'),  # 15日超（赤字）
+    ('8026', '貸出中', -5,  15,  '小川 由紀',   'ｻﾝﾌﾟﾙ電機',     '新規新車'),
+    ('8002', '予約済', 2,   9,   '岡田 涼太',   'ﾃｽﾄ自動車販売', '車検'),
+    ('8010', '予約済', 5,   11,  '中井 千夏',   'ｻﾝﾌﾟﾙ興業',     '乗り換え新車'),
+    ('8019', '予約済', 1,   6,   '山下 拓也',   'ﾃﾞﾓ物産',       '点検'),
+    ('8027', '予約済', 7,   14,  '高橋 誠',     'ﾃｽﾄ産業',       '一般修理'),
     ('8007', '修理中', -3,  4,   '森本 大輔',   '',              ''),
     ('8022', '修理中', -1,  6,   '藤原 みなみ', '',              ''),
     ('8013', '点検中', 0,   1,   '西村 綾',     '',              ''),
     ('8029', '車検中', -2,  2,   '小川 由紀',   '',              ''),
 ]
+
+def _demo_insp_offset(i):
+    """デモ車両の車検満了日を散らす（一部は2ヶ月以内で赤字警告になる）"""
+    return 25 + (i * 11) % 320
+
+def _refresh_sales_demo(c):
+    """デモの日付を今日基準に振り直す。
+    デプロイのたびに実行し、経過日数や予約がいつ見ても自然に見えるようにする。
+    社員が入力した本物のイベント（notes が 'デモデータ' 以外）には触れない。"""
+    row = c.execute("SELECT value FROM settings WHERE key='sales_demo_seeded'").fetchone()
+    if not row or row[0] == 'skipped':
+        return 0
+    base = datetime.strptime(today_jst(), '%Y-%m-%d')
+    off  = lambda n: (base + timedelta(days=n)).strftime('%Y-%m-%d')
+    n = 0
+    for num, status, s_off, e_off, staff, client, cat in _SALES_DEMO_EVENTS:
+        n += c.execute(
+            """UPDATE events SET start_date=?, end_date=?
+               WHERE notes='デモデータ' AND vehicle_id IN
+                 (SELECT id FROM vehicles WHERE number=? AND department='sales')""",
+            (off(s_off), off(e_off) if e_off is not None else None, num)).rowcount
+    for i, (num, _ctype, _cat, _region) in enumerate(_SALES_DEMO_VEHICLES):
+        c.execute("UPDATE vehicles SET inspection_date=? WHERE number=? AND department='sales'",
+                  (off(_demo_insp_offset(i)), num))
+    return n
 
 def _seed_sales_demo(c):
     """セールス部門の仮稼働用ダミーデータを一度だけ投入する"""
@@ -758,13 +783,13 @@ def _seed_sales_demo(c):
         c.execute("INSERT OR IGNORE INTO staff (name, department) VALUES (?, 'sales')", (name,))
 
     ids = {}
-    for num, ctype, cat, region in _SALES_DEMO_VEHICLES:
+    for i, (num, ctype, cat, region) in enumerate(_SALES_DEMO_VEHICLES):
         max_id = c.execute('SELECT MAX(id) FROM vehicles').fetchone()[0] or 0
         vid = max_id + 1
         c.execute('''INSERT INTO vehicles
             (id,number,car_type,year,full_number,inspection_date,region,car_category,department)
             VALUES (?,?,?,?,?,?,?,?,'sales')''',
-            (vid, num, ctype, '', f'{region}500ｻ {num}', off(120), region, cat))
+            (vid, num, ctype, '', f'{region}500ｻ {num}', off(_demo_insp_offset(i)), region, cat))
         ids[num] = vid
 
     # 全車にまず在庫イベント（「状態未登録」を出さないため）
@@ -903,14 +928,20 @@ def init_db():
             pass
     conn.commit()
 
-    # ⚠️ セールス部門の仮稼働用ダミーデータ（本物のリスト受領後にこの2行を削除）
+    # ⚠️ セールス部門の仮稼働用ダミーデータ（本物のリスト受領後にこのブロックを削除）
     try:
         n = _seed_sales_demo(c)
         conn.commit()
         if n:
             app.logger.warning(f'[demo] セールス部門のダミーデータを投入しました: {n}台')
+        else:
+            # 投入済みならデプロイのたびに日付だけ今日基準へ振り直す
+            m = _refresh_sales_demo(c)
+            conn.commit()
+            if m:
+                app.logger.warning(f'[demo] ダミーの日付を更新しました: {m}件')
     except Exception as e:
-        app.logger.warning(f'[demo] ダミーデータ投入に失敗: {e}')
+        app.logger.warning(f'[demo] ダミーデータ処理に失敗: {e}')
 
     base = os.path.dirname(__file__)
     if c.execute('SELECT COUNT(*) FROM vehicles').fetchone()[0] == 0:

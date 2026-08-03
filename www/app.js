@@ -49,6 +49,7 @@ function switchDept(dept) {
     rebuildTypeFilter();
     document.getElementById('totalBadge').textContent = deptVehicles().length;
     loadStaffOptions();
+    loadCategoryOptions();
     applyFilters();
 }
 
@@ -65,6 +66,24 @@ function rebuildTypeFilter() {
         sel.appendChild(o);
     });
     sel.value = types.includes(prev) ? prev : '';
+}
+
+// 貸出区分／貸出理由プルダウン：セールス部門は代車を出した理由を選ぶ
+const SALES_CATEGORIES = ['車検', '点検', '一般修理', '新規新車', '乗り換え新車'];
+let _rentalCategoryHTML = null;
+function loadCategoryOptions() {
+    const sel = document.getElementById('formCategory');
+    if (!sel) return;
+    if (_rentalCategoryHTML === null) _rentalCategoryHTML = sel.innerHTML;
+    const label = document.getElementById('formCategoryLabel');
+    if (currentDept === 'rental') {
+        sel.innerHTML = _rentalCategoryHTML;
+        if (label) label.textContent = '貸出区分';
+        return;
+    }
+    sel.innerHTML = '<option value="">（選択）</option>' +
+        SALES_CATEGORIES.map(c => `<option>${c}</option>`).join('');
+    if (label) label.textContent = '貸出理由';
 }
 
 // 担当営業プルダウン：レンタカーは従来の固定リスト、セールスは社員マスタから
@@ -103,6 +122,7 @@ async function init() {
     document.getElementById('lastUpdated').textContent = fmtUpdated();
 
     loadStaffOptions();
+    loadCategoryOptions();
     applyFilters();
     refreshPendingBadge();
     setInterval(refreshEvents, 30000);
@@ -244,6 +264,26 @@ function inspectionWarning(dateStr) {
     return '';
 }
 
+// 車検満了日を常に「月/日」で表示（2ヶ月以内は赤太字のまま）
+function inspectionCell(dateStr) {
+    if (!dateStr) return '';
+    const warn = inspectionWarning(dateStr);
+    if (warn) return warn;
+    const insp = new Date(dateStr);
+    return `<span class="insp-date">${insp.getMonth() + 1}/${insp.getDate()}</span>`;
+}
+
+// 貸出開始からの経過日数（15日以上は赤字）
+function elapsedDaysCell(status, ev) {
+    if (status !== '貸出中' || !ev || !ev.start_date) return '';
+    const start = new Date(ev.start_date + 'T00:00:00');
+    const now   = new Date(today() + 'T00:00:00');
+    const days  = Math.floor((now - start) / 86400000);
+    if (isNaN(days) || days < 0) return '';
+    const text = days === 0 ? '本日' : `${days}日`;
+    return `<span class="${days >= 15 ? 'elapsed-warn' : 'elapsed-days'}">${text}</span>`;
+}
+
 // 直近イベントの状態アイコン（洗車・清掃・スタッドレス）
 function statusIcons(ev, v) {
     // 朝一ラインの ★洗車済 ☆中清掃済 ●冬タイヤ と同じ並び
@@ -282,9 +322,14 @@ function renderDashboard() {
 
     const statusColor = { '在庫':'#4CAF50','貸出中':'#2196F3','予約済':'#FF9800','車検中':'#9C27B0','点検中':'#795548','修理中':'#f44336' };
 
+    // セールス部門は「返却日」の代わりに貸出からの経過日数を出す
+    const isSales = currentDept === 'sales';
+
     let html = `<table class="vlist-table">
     <thead><tr>
-      <th>車番</th><th>車種</th><th>状態</th><th>担当/顧客</th><th>返却日</th><th>アイコン</th><th>車検</th>
+      <th>車番</th><th>車種</th><th>状態</th><th>担当/顧客</th>
+      <th>${isSales ? '経過日数' : '返却日'}</th>
+      <th>${isSales ? 'ｱｲｺﾝ' : 'アイコン'}</th><th>車検</th>
     </tr></thead><tbody>`;
 
     filteredVehicles.forEach(v => {
@@ -294,14 +339,15 @@ function renderDashboard() {
         const client = ev ? [ev.staff, ev.client].filter(Boolean).join(' / ') : '';
         const endDt  = ev && ev.end_date ? fmtDate(ev.end_date) : '';
         const icons  = statusIcons(ev, v);
-        const insp   = inspectionWarning(v.inspection_date);
+        const insp   = isSales ? inspectionCell(v.inspection_date)
+                               : inspectionWarning(v.inspection_date);
         const cat    = v.car_category ? `<span class="vlist-cat">${v.car_category}</span>` : '';
         html += `<tr onclick="openDetail(${v.id})">
           <td class="vlist-num">${v.number}</td>
           <td><span class="vlist-type">${v.car_type}</span> ${cat}</td>
           <td>${badge}</td>
           <td class="vlist-client">${client}</td>
-          <td style="font-size:12px;color:#888;">${endDt}</td>
+          <td style="font-size:12px;color:#888;">${isSales ? elapsedDaysCell(status, ev) : endDt}</td>
           <td class="vlist-icons">${icons}</td>
           <td class="vlist-insp">${insp}</td>
         </tr>`;

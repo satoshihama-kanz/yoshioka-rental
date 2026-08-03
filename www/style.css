@@ -215,6 +215,10 @@ thead .cal-vehicle-col { position: sticky; left: 0; top: 0; z-index: 3; backgrou
 .vlist-icons { white-space:nowrap; font-size:11px; letter-spacing:0px; }
 .vlist-insp { font-size:10px; white-space:nowrap; }
 .insp-warn { color:#E53935; font-weight:bold; font-size:9px; }
+.insp-date { color:#888; font-size:9px; }
+/* 代車の貸出経過日数（15日以上は赤字） */
+.elapsed-days { color:#333; font-size:12px; }
+.elapsed-warn { color:#E53935; font-weight:bold; font-size:12px; }
 .insp-ok   { color:#aaa; }
 
 /* 日付 */

@@ -145,7 +145,7 @@ body.dept-sales .action-btn.selected{border-color:#4a3410;background:#4a3410}
 
   <!-- 適用 -->
   <div class="section" id="categorySection">
-    <div class="section-title">📋 適用</div>
+    <div class="section-title" id="categoryTitle">📋 適用</div>
     <select id="category">
       <option value="">選択してください（任意）</option>
       <option value="損保">損保</option>
@@ -267,9 +267,28 @@ function switchDept(dept) {
   localStorage.setItem('fleetDept', dept);
   applyDeptChrome();
   loadStaffOptions();
+  loadCategoryOptions();
   // 部門が変わると車番の意味も変わるので選択をリセットする
   document.getElementById('vehicleNumber').value = '';
   lookupVehicle();
+}
+
+// 適用プルダウン：セールス部門は代車を出した理由を選ぶ
+const SALES_CATEGORIES = ['車検', '点検', '一般修理', '新規新車', '乗り換え新車'];
+let _rentalCategoryHTML = null;
+function loadCategoryOptions() {
+  const sel = document.getElementById('category');
+  if (!sel) return;
+  if (_rentalCategoryHTML === null) _rentalCategoryHTML = sel.innerHTML;
+  const title = document.getElementById('categoryTitle');
+  if (currentDept === 'rental') {
+    sel.innerHTML = _rentalCategoryHTML;
+    if (title) title.textContent = '📋 適用';
+    return;
+  }
+  sel.innerHTML = '<option value="">選択してください（任意）</option>' +
+    SALES_CATEGORIES.map(c => `<option value="${c}">${c}</option>`).join('');
+  if (title) title.textContent = '📋 貸出理由';
 }
 
 // 担当者プルダウン：レンタカーは従来の固定リスト、セールスは社員マスタから取得
@@ -634,6 +653,7 @@ async function cancelEvent() {
 (function() {
   applyDeptChrome();
   loadStaffOptions();
+  loadCategoryOptions();
   const params = new URLSearchParams(window.location.search);
   const vnum = params.get('vehicle');
   if (vnum) {
