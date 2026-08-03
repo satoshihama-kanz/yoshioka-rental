@@ -329,7 +329,7 @@ function renderDashboard() {
     <thead><tr>
       <th>車番</th><th>車種</th><th>状態</th><th>担当/顧客</th>
       <th>${isSales ? '経過日数' : '返却日'}</th>
-      <th>${isSales ? 'ｱｲｺﾝ' : 'アイコン'}</th><th>車検</th>
+      <th>ｱｲｺﾝ</th><th>車検</th>
     </tr></thead><tbody>`;
 
     filteredVehicles.forEach(v => {
@@ -339,8 +339,7 @@ function renderDashboard() {
         const client = ev ? [ev.staff, ev.client].filter(Boolean).join(' / ') : '';
         const endDt  = ev && ev.end_date ? fmtDate(ev.end_date) : '';
         const icons  = statusIcons(ev, v);
-        const insp   = isSales ? inspectionCell(v.inspection_date)
-                               : inspectionWarning(v.inspection_date);
+        const insp   = inspectionCell(v.inspection_date);
         const cat    = v.car_category ? `<span class="vlist-cat">${v.car_category}</span>` : '';
         html += `<tr onclick="openDetail(${v.id})">
           <td class="vlist-num">${v.number}</td>
