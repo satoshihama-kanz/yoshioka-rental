@@ -14,6 +14,8 @@ app = Flask(__name__, static_folder='www')
 app.secret_key        = os.environ.get('SECRET_KEY', 'yoshioka-fleet-secret-2024')
 ADMIN_USER            = os.environ.get('ADMIN_USER', 'yoshioka')
 ADMIN_PASS            = os.environ.get('ADMIN_PASS', 'rental2024')
+# マスタ編集用の合言葉。未設定ならログインパスワードを流用する
+MASTER_PASS           = os.environ.get('MASTER_PASS', '') or ADMIN_PASS
 LINE_CHANNEL_SECRET   = os.environ.get('LINE_CHANNEL_SECRET', '')
 LINE_CHANNEL_TOKEN    = os.environ.get('LINE_CHANNEL_TOKEN', '')
 LINE_NOTIFY_TOKEN     = os.environ.get('LINE_NOTIFY_TOKEN', '')
@@ -133,6 +135,39 @@ def login_required(f):
             return redirect('/login')
         return f(*args, **kwargs)
     return decorated
+
+# ── マスタ編集ロック ──────────────────────────────────────
+# 閲覧は誰でもできるが、追加・変更・削除は合言葉を入れた人だけに限る。
+def master_edit_required(f):
+    @wraps(f)
+    def decorated(*args, **kwargs):
+        if not session.get('logged_in'):
+            return jsonify({'error': 'Unauthorized'}), 401
+        if not session.get('master_edit'):
+            return jsonify({'error': 'マスタ編集はロックされています',
+                            'locked': True}), 403
+        return f(*args, **kwargs)
+    return decorated
+
+@app.route('/api/master/unlock', methods=['POST'])
+@login_required
+def master_unlock():
+    pw = (request.get_json() or {}).get('password', '')
+    if pw != MASTER_PASS:
+        return jsonify({'error': '合言葉が違います'}), 403
+    session['master_edit'] = True
+    return jsonify({'ok': True, 'unlocked': True})
+
+@app.route('/api/master/lock', methods=['POST'])
+@login_required
+def master_lock():
+    session.pop('master_edit', None)
+    return jsonify({'ok': True, 'unlocked': False})
+
+@app.route('/api/master/lock-state')
+@login_required
+def master_lock_state():
+    return jsonify({'unlocked': bool(session.get('master_edit'))})
 
 # ── ログイン/ログアウト ────────────────────────────────────
 @app.route('/login', methods=['GET', 'POST'])
@@ -2742,7 +2777,7 @@ def master_vehicles_get():
     return jsonify(rows)
 
 @app.route('/api/master/vehicles', methods=['POST'])
-@login_required
+@master_edit_required
 def master_vehicles_post():
     d = request.get_json() or {}
     number = (d.get('number') or '').strip()
@@ -2760,7 +2795,7 @@ def master_vehicles_post():
     return jsonify(row)
 
 @app.route('/api/master/vehicles/<int:vid>', methods=['PUT'])
-@login_required
+@master_edit_required
 def master_vehicles_put(vid):
     d = request.get_json() or {}
     conn = get_db()
@@ -2775,7 +2810,7 @@ def master_vehicles_put(vid):
     return jsonify(row)
 
 @app.route('/api/master/vehicles/<int:vid>', methods=['DELETE'])
-@login_required
+@master_edit_required
 def master_vehicles_delete(vid):
     conn = get_db()
     conn.execute('DELETE FROM events WHERE vehicle_id=?', (vid,))
@@ -2794,7 +2829,7 @@ def master_clients_get():
     return jsonify(rows)
 
 @app.route('/api/master/clients', methods=['POST'])
-@login_required
+@master_edit_required
 def master_clients_post():
     d = request.get_json() or {}
     name = (d.get('name') or '').strip()
@@ -2810,7 +2845,7 @@ def master_clients_post():
     return jsonify(row)
 
 @app.route('/api/master/clients/<int:cid>', methods=['PUT'])
-@login_required
+@master_edit_required
 def master_clients_put(cid):
     d = request.get_json() or {}
     conn = get_db()
@@ -2822,7 +2857,7 @@ def master_clients_put(cid):
     return jsonify(row)
 
 @app.route('/api/master/clients/<int:cid>', methods=['DELETE'])
-@login_required
+@master_edit_required
 def master_clients_delete(cid):
     conn = get_db()
     conn.execute('DELETE FROM clients WHERE id=?', (cid,))
@@ -2848,7 +2883,7 @@ def master_staff_get():
     return jsonify(rows)
 
 @app.route('/api/master/staff', methods=['POST'])
-@login_required
+@master_edit_required
 def master_staff_post():
     d = request.get_json() or {}
     name = (d.get('name') or '').strip()
@@ -2871,7 +2906,7 @@ def master_staff_post():
     return jsonify(row)
 
 @app.route('/api/master/staff/<int:sid>', methods=['PUT'])
-@login_required
+@master_edit_required
 def master_staff_put(sid):
     d = request.get_json() or {}
     conn = get_db()
@@ -2888,7 +2923,7 @@ def master_staff_put(sid):
     return jsonify(row)
 
 @app.route('/api/master/staff/<int:sid>', methods=['DELETE'])
-@login_required
+@master_edit_required
 def master_staff_delete(sid):
     conn = get_db()
     try:

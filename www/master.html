@@ -3,15 +3,15 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>マスタ管理 | 吉岡商会</title>
+<title>ﾏｽﾀ管理 | 吉岡商会</title>
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
 body{font-family:'Helvetica Neue',Arial,sans-serif;background:#f0f4f8;color:#333;font-size:14px}
-header{background:#1a3a5c;color:white;padding:14px 20px;display:flex;align-items:center;gap:16px}
-header h1{font-size:18px}
-header a{color:#aad4f5;text-decoration:none;font-size:13px}
-.tabs{display:flex;background:#fff;border-bottom:2px solid #e0e7ef;padding:0 20px}
-.tab{padding:12px 20px;cursor:pointer;font-weight:bold;color:#666;border-bottom:3px solid transparent;margin-bottom:-2px}
+header{background:#1a3a5c;color:white;padding:8px 12px;display:flex;align-items:center;gap:10px;flex-wrap:nowrap}
+header h1{font-size:15px;white-space:nowrap}
+header a{color:#aad4f5;text-decoration:none;font-size:11px;white-space:nowrap}
+.tabs{display:flex;background:#fff;border-bottom:2px solid #e0e7ef;padding:0 8px}
+.tab{padding:8px 10px;cursor:pointer;font-weight:bold;color:#666;border-bottom:3px solid transparent;margin-bottom:-2px;font-size:12px;white-space:nowrap}
 .tab.active{color:#1a3a5c;border-bottom-color:#1a3a5c}
 .content{display:none;padding:20px}
 .content.active{display:block}
@@ -20,11 +20,20 @@ header a{color:#aad4f5;text-decoration:none;font-size:13px}
 .btn{padding:7px 16px;border:none;border-radius:6px;cursor:pointer;font-size:13px;font-weight:bold}
 .btn-primary{background:#1a3a5c;color:white}
 .btn-success{background:#4CAF50;color:white}
-.btn-danger{background:#f44336;color:white;padding:4px 10px;font-size:12px}
-.btn-edit{background:#FF9800;color:white;padding:4px 10px;font-size:12px}
-table{width:100%;border-collapse:collapse;background:white;border-radius:8px;overflow:hidden;box-shadow:0 1px 4px rgba(0,0,0,0.08)}
-th{background:#1a3a5c;color:white;padding:10px 12px;text-align:left;font-size:13px}
-td{padding:9px 12px;border-bottom:1px solid #f0f0f0;vertical-align:middle}
+.btn-danger{background:#f44336;color:white;padding:3px 7px;font-size:11px}
+.btn-edit{background:#FF9800;color:white;padding:3px 7px;font-size:11px}
+.btn:disabled{opacity:.4;cursor:not-allowed}
+/* 編集ロック */
+.lock-bar{display:flex;align-items:center;gap:8px;padding:6px 12px;background:#FFF8E1;
+  border-bottom:1px solid #FFE082;font-size:11px;color:#795548;flex-wrap:wrap}
+.lock-bar.unlocked{background:#E8F5E9;border-bottom-color:#A5D6A7;color:#2E7D32}
+.lock-bar .btn{padding:3px 9px;font-size:11px}
+table{width:100%;border-collapse:collapse;background:white;border-radius:8px;overflow:hidden;box-shadow:0 1px 4px rgba(0,0,0,0.08);table-layout:fixed}
+th{background:#1a3a5c;color:white;padding:5px 4px;text-align:left;font-size:10px;line-height:1.25;word-break:keep-all}
+td{padding:5px 4px;border-bottom:1px solid #f0f0f0;vertical-align:middle;font-size:11px;line-height:1.3;word-break:break-all}
+.col-ops{width:74px}
+.ops{display:flex;gap:3px;flex-wrap:nowrap}
+.ops .btn{padding:2px 5px;font-size:10px;white-space:nowrap;flex:0 0 auto}
 tr:hover td{background:#f8fafc}
 .badge{display:inline-block;padding:2px 8px;border-radius:10px;font-size:11px;font-weight:bold}
 .badge-ok{background:#e8f5e9;color:#2e7d32}
@@ -58,21 +67,27 @@ body.dept-sales th{background:#4a3410}
 <body>
 
 <header>
-  <h1>⚙️ マスタ管理</h1>
-  <a href="/" id="backLink">← ダッシュボードへ戻る</a>
+  <h1>⚙️ ﾏｽﾀ管理</h1>
+  <a href="/" id="backLink">← ﾀﾞｯｼｭﾎﾞｰﾄﾞへ戻る</a>
   <span id="deptLabel" style="margin-left:auto;font-size:13px;opacity:.85"></span>
 </header>
 
 <!-- 部門切替 -->
 <div class="dept-tabs">
-  <div class="dept-tab active" id="deptTab-rental" onclick="switchDept('rental')">🚙 レンタカー事業部</div>
-  <div class="dept-tab" id="deptTab-sales" onclick="switchDept('sales')">🏢 セールス部門（代車）</div>
+  <div class="dept-tab active" id="deptTab-rental" onclick="switchDept('rental')">🚙 ﾚﾝﾀｶｰ事業部</div>
+  <div class="dept-tab" id="deptTab-sales" onclick="switchDept('sales')">🏢 ｾｰﾙｽ部門（代車）</div>
+</div>
+
+<!-- マスタ編集のロック状態 -->
+<div class="lock-bar" id="lockBar">
+  <span id="lockText">🔒 閲覧のみ（編集するには合言葉が必要です）</span>
+  <button class="btn btn-primary" id="lockBtn" onclick="toggleLock()">編集する</button>
 </div>
 
 <div class="tabs">
-  <div class="tab active" onclick="showTab('vehicles')">🚗 車両マスタ</div>
-  <div class="tab" onclick="showTab('clients')">🏢 取引先マスタ</div>
-  <div class="tab" onclick="showTab('staff')">👤 従業員マスタ</div>
+  <div class="tab active" onclick="showTab('vehicles')">🚗 車両ﾏｽﾀ</div>
+  <div class="tab" onclick="showTab('clients')">🏢 取引先ﾏｽﾀ</div>
+  <div class="tab" onclick="showTab('staff')">👤 従業員ﾏｽﾀ</div>
 </div>
 
 <!-- 車両マスタ -->
@@ -83,14 +98,14 @@ body.dept-sales th{background:#4a3410}
     <span class="count" id="vCount"></span>
   </div>
   <table>
-    <thead><tr><th>車番</th><th>車種</th><th>地域</th><th>区分</th><th>スタッドレス</th><th>他社借り</th><th>操作</th></tr></thead>
+    <thead><tr><th>車番</th><th>車種</th><th>地域</th><th>区分</th><th>冬ﾀｲﾔ</th><th>他社借り</th><th>操作</th></tr></thead>
     <tbody id="vTable"></tbody>
   </table>
 </div>
 
 <!-- 取引先マスタ -->
 <div class="content" id="tab-clients">
-  <div class="dept-note">※ 取引先マスタは両部門で共通です</div>
+  <div class="dept-note">※ 取引先ﾏｽﾀは両部門で共通です</div>
   <div class="toolbar">
     <input type="text" id="cSearch" placeholder="名前・読み仮名で検索…" oninput="renderClients()">
     <button class="btn btn-success" onclick="openClientModal()">＋ 追加</button>
@@ -209,6 +224,61 @@ function switchDept(dept) {
   load();
 }
 
+// ── マスタ編集ロック ──
+// 閲覧は誰でもできるが、追加・変更・削除は合言葉を入れた人だけに開放する。
+// 画面側のボタン制御は目印にすぎず、実際の判定はサーバ側で行っている。
+let masterUnlocked = false;
+
+async function refreshLockState() {
+  try {
+    const j = await fetch(API + '/api/master/lock-state').then(r => r.json());
+    masterUnlocked = !!j.unlocked;
+  } catch (e) { masterUnlocked = false; }
+  applyLockState();
+}
+
+function applyLockState() {
+  const bar  = document.getElementById('lockBar');
+  const text = document.getElementById('lockText');
+  const btn  = document.getElementById('lockBtn');
+  bar.classList.toggle('unlocked', masterUnlocked);
+  text.textContent = masterUnlocked
+    ? '🔓 編集できます（作業が終わったらロックしてください）'
+    : '🔒 閲覧のみ（編集するには合言葉が必要です）';
+  btn.textContent = masterUnlocked ? 'ロックする' : '編集する';
+  document.querySelectorAll('.btn-edit, .btn-danger, .btn-success')
+    .forEach(b => { b.disabled = !masterUnlocked; });
+}
+
+async function toggleLock() {
+  if (masterUnlocked) {
+    await fetch(API + '/api/master/lock', { method: 'POST' });
+    masterUnlocked = false;
+    applyLockState();
+    return;
+  }
+  const pw = prompt('マスタ編集の合言葉を入力してください');
+  if (!pw) return;
+  const res = await fetch(API + '/api/master/unlock', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ password: pw })
+  });
+  if (!res.ok) { alert('合言葉が違います'); return; }
+  masterUnlocked = true;
+  applyLockState();
+}
+
+// 保存・削除の応答がロック切れだったときに気づけるようにする
+function checkLocked(data, res) {
+  if (res && res.status === 403) {
+    alert('マスタ編集がロックされています。上部の「編集する」から合言葉を入れてください。');
+    refreshLockState();
+    return true;
+  }
+  return false;
+}
+
 async function load() {
   applyDeptChrome();
   [vehicles, clients, staffList] = await Promise.all([
@@ -217,6 +287,7 @@ async function load() {
     fetch(`${API}/api/master/staff?dept=${currentDept}`).then(r => r.json()),
   ]);
   renderVehicles(); renderClients(); renderStaff();
+  applyLockState();
 }
 
 function showTab(name) {
@@ -245,10 +316,10 @@ function renderVehicles() {
       <td>${v.car_category||''}</td>
       <td>${v.studless ? '<span class="badge badge-ok">あり</span>' : ''}</td>
       <td>${v.is_rental_other ? '<span class="badge badge-ng">他社借り</span>' : ''}</td>
-      <td>
+      <td class="col-ops"><div class="ops">
         <button class="btn btn-edit" onclick="openVehicleModal(${v.id})">編集</button>
         <button class="btn btn-danger" onclick="deleteVehicle(${v.id},'${v.number}')">削除</button>
-      </td>
+      </div></td>
     </tr>`).join('');
 }
 
@@ -282,6 +353,7 @@ async function saveVehicle() {
   const method = editVid ? 'PUT' : 'POST';
   const res = await fetch(url, {method, headers:{'Content-Type':'application/json'}, body: JSON.stringify(body)});
   const data = await res.json();
+  if (checkLocked(data, res)) { closeModal('vehicleModal'); return; }
   if (data.error) { showAlert('vAlert', data.error); return; }
   closeModal('vehicleModal');
   await load();
@@ -289,7 +361,8 @@ async function saveVehicle() {
 
 async function deleteVehicle(id, num) {
   if (!confirm(`車番 ${num} を削除しますか？関連するすべての状態履歴も削除されます。`)) return;
-  await fetch(`${API}/api/master/vehicles/${id}`, {method:'DELETE'});
+  const dres = await fetch(`${API}/api/master/vehicles/${id}`, {method:'DELETE'});
+  if (checkLocked(null, dres)) return;
   await load();
 }
 
@@ -303,10 +376,10 @@ function renderClients() {
     <tr>
       <td>${c.name}</td>
       <td style="color:#888">${c.reading||''}</td>
-      <td>
+      <td class="col-ops"><div class="ops">
         <button class="btn btn-edit" onclick="openClientModal(${c.id})">編集</button>
         <button class="btn btn-danger" onclick="deleteClient(${c.id},'${c.name.replace(/'/g,"\\'")}')">削除</button>
-      </td>
+      </div></td>
     </tr>`).join('');
 }
 
@@ -337,7 +410,8 @@ async function saveClient() {
 
 async function deleteClient(id, name) {
   if (!confirm(`「${name}」を削除しますか？`)) return;
-  await fetch(`${API}/api/master/clients/${id}`, {method:'DELETE'});
+  const dres = await fetch(`${API}/api/master/clients/${id}`, {method:'DELETE'});
+  if (checkLocked(null, dres)) return;
   await load();
 }
 
@@ -354,10 +428,10 @@ function renderStaff() {
   document.getElementById('sTable').innerHTML = staffList.map(s => `
     <tr>
       <td><b>${s.name}</b></td>
-      <td>
+      <td class="col-ops"><div class="ops">
         <button class="btn btn-edit" onclick="openStaffModal(${s.id})">編集</button>
         <button class="btn btn-danger" onclick="deleteStaff(${s.id},'${s.name}')">削除</button>
-      </td>
+      </div></td>
     </tr>`).join('');
 }
 
@@ -388,7 +462,8 @@ async function saveStaff() {
 
 async function deleteStaff(id, name) {
   if (!confirm(`「${name}」を削除しますか？`)) return;
-  await fetch(`${API}/api/master/staff/${id}`, {method:'DELETE'});
+  const dres = await fetch(`${API}/api/master/staff/${id}`, {method:'DELETE'});
+  if (checkLocked(null, dres)) return;
   await load();
 }
 
@@ -401,6 +476,7 @@ function showAlert(id, msg) {
 }
 document.querySelectorAll('.overlay').forEach(o => o.addEventListener('click', e => { if(e.target===o) o.classList.remove('open'); }));
 
+refreshLockState();
 load();
 </script>
 </body>
