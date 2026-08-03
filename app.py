@@ -1663,6 +1663,13 @@ def _period_label(ev):
         return s
     return s + '～'
 
+def _clean_note(ev):
+    """営業が入力した備考のみ返す（システム由来の文言は除外）"""
+    note = ((ev or {}).get('notes') or '').strip()
+    if note.startswith('所在地:') or note.startswith('エクセル取込'):
+        return ''
+    return note
+
 def _stock_marks(v, ev):
     """在庫車両につく状態マーク（★洗車済 ☆中清掃済 ●冬タイヤ）"""
     m = ''
@@ -1755,6 +1762,9 @@ def build_morning_report(date=None):
                 parts = [f"・{v['car_type']}", v['number'], _period_label(ev)]
                 if ev.get('client'): parts.append(ev['client'])
                 lines.append(' '.join(p for p in parts if p))
+                note = _clean_note(ev)
+                if note:
+                    lines.append(f'　（{note}）')
             first = False
         if first:
             lines.append('（予約なし）')
@@ -1765,11 +1775,7 @@ def build_morning_report(date=None):
                 continue
             lines += ['', f'▼{label}']
             for v, ev, status in group:
-                parts = [f"・{v['car_type']}", v['number'], _period_label(ev)]
-                lines.append(' '.join(p for p in parts if p))
-                note = (ev.get('notes') or '').strip()
-                if note and not note.startswith('所在地:'):
-                    lines.append(f'　（{note}）')
+                lines.append(f"・{v['car_type']} {v['number']}")
 
         if region == '京都':
             lines += ['', '']
