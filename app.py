@@ -1663,6 +1663,14 @@ def _period_label(ev):
         return s
     return s + '～'
 
+def _stock_marks(v, ev):
+    """在庫車両につく状態マーク（★洗車済 ☆中清掃済 ●冬タイヤ）"""
+    m = ''
+    if (ev or {}).get('washed'):           m += '★'
+    if (ev or {}).get('interior_cleaned'): m += '☆'
+    if v.get('studless'):                  m += '●'
+    return m
+
 def resolve_vehicle_states(date=None):
     """指定日時点の全車両の状態を確定する。
 
@@ -1702,6 +1710,7 @@ def build_morning_report(date=None):
 
     stock = {'京都': [], '滋賀': []}
     resv  = {'京都': {}, '滋賀': {}}
+    maint = {'京都': [], '滋賀': []}
     unknown = []
     for st in states:
         v, ev, status = st['vehicle'], st['event'], st['status']
@@ -1717,9 +1726,12 @@ def build_morning_report(date=None):
             staff  = match_staff((ev or {}).get('staff', ''))
             region = _STAFF_REGION.get(staff, vregion)
             resv[region].setdefault(staff, []).append((v, ev))
+        elif status in ('修理中', '点検中', '車検中'):
+            maint[vregion].append((v, ev, status))
 
     dt = datetime.strptime(d, '%Y-%m-%d')
-    lines = [f'【{dt.month}/{dt.day} 朝一 在庫・予約】', '']
+    lines = [f'【{dt.month}/{dt.day} 朝一 在庫・予約】', '',
+             '★洗車済　☆中清掃済　●冬タイヤ', '']
 
     for region, flag, order in (('京都', '🔵', MORNING_STAFF_KYOTO),
                                 ('滋賀', '🟢', MORNING_STAFF_SHIGA)):
@@ -1727,7 +1739,7 @@ def build_morning_report(date=None):
         lines.append(f'{flag}{region} 在庫 {len(items)}台')
         if items:
             for v, ev in items:
-                lines.append(f"・{v['car_type']} {v['number']}".rstrip())
+                lines.append(f"・{v['car_type']} {v['number']}{_stock_marks(v, ev)}".rstrip())
         else:
             lines.append('（在庫なし）')
 
@@ -1746,6 +1758,19 @@ def build_morning_report(date=None):
             first = False
         if first:
             lines.append('（予約なし）')
+
+        for label, wanted in (('修理', ('修理中',)), ('点検・車検', ('点検中', '車検中'))):
+            group = [x for x in maint[region] if x[2] in wanted]
+            if not group:
+                continue
+            lines += ['', f'▼{label}']
+            for v, ev, status in group:
+                parts = [f"・{v['car_type']}", v['number'], _period_label(ev)]
+                lines.append(' '.join(p for p in parts if p))
+                note = (ev.get('notes') or '').strip()
+                if note and not note.startswith('所在地:'):
+                    lines.append(f'　（{note}）')
+
         if region == '京都':
             lines += ['', '']
 

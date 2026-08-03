@@ -1,3 +1,10 @@
+// 更新時刻の表記（更新-8/3-9:40:19）
+function fmtUpdated() {
+    const d = new Date();
+    const p = n => String(n).padStart(2, '0');
+    return `更新-${d.getMonth() + 1}/${d.getDate()}-${d.getHours()}:${p(d.getMinutes())}:${p(d.getSeconds())}`;
+}
+
 const API = '';
 let vehicles = [];
 let events = [];
@@ -25,8 +32,8 @@ async function init() {
         sel.appendChild(o);
     });
 
-    document.getElementById('totalBadge').textContent = `全 ${vehicles.length} 台`;
-    document.getElementById('lastUpdated').textContent = `最終更新: ${new Date().toLocaleString('ja-JP')}`;
+    document.getElementById('totalBadge').textContent = vehicles.length;
+    document.getElementById('lastUpdated').textContent = fmtUpdated();
 
     applyFilters();
     refreshPendingBadge();
@@ -709,7 +716,7 @@ async function saveEvent() {
     renderCurrentPage();
     if (currentDetailVehicleId) renderDetail(currentDetailVehicleId);
 
-    document.getElementById('lastUpdated').textContent = `最終更新: ${new Date().toLocaleString('ja-JP')}`;
+    document.getElementById('lastUpdated').textContent = fmtUpdated();
 }
 
 async function deleteEvent(eventId) {
