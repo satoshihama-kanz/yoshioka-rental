@@ -305,7 +305,7 @@ function renderDashboard() {
 
     const cards = document.getElementById('summaryCards');
     cards.innerHTML = `
-        <div class="card available" style="cursor:pointer" onclick="filterByStatus('')">
+        <div class="card available" style="cursor:pointer" onclick="filterByStatus('在庫')">
           <div class="card-num">${statusCounts['在庫']}</div><div class="card-label">在庫</div></div>
         <div class="card rented" style="cursor:pointer" onclick="filterByStatus('貸出中')">
           <div class="card-num">${statusCounts['貸出中']}</div><div class="card-label">貸出中</div></div>
@@ -1017,8 +1017,8 @@ function morningRowEdit() {
     const b = morningBlocks[document.getElementById('mpRowIdx').value];
     closeMorningRowMenu();
     if (!b) return;
-    if (b.event_id) openEditModal(b.event_id, b.vehicle_id);
-    else openAddModal(b.vehicle_id);
+    // 車両の登録・変更は入力フォームに統一する
+    openLiffForm(b.vehicle_id);
 }
 
 async function morningRowDelete() {
@@ -1037,8 +1037,16 @@ async function morningRowDelete() {
 
 // プレビューから車両を追加登録する（在庫・車検などの追加）
 function morningAddVehicle() {
-    openAddModal();
+    openLiffForm();
 }
+
+// 入力フォームは別タブで開くため、戻ってきたら最新の状態を取り込む
+window.addEventListener('focus', async () => {
+    if (document.hidden) return;
+    events = await fetch(API + '/api/events').then(r => r.json()).catch(() => events);
+    renderCurrentPage();
+    if (document.getElementById('morningModal').classList.contains('open')) loadMorningPreview();
+});
 
 async function sendMorningNow() {
     if (!confirm('この内容でグループLINEに送信します。よろしいですか？')) return;
