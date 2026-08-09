@@ -1025,11 +1025,25 @@ async function morningRowDelete() {
     const b = morningBlocks[document.getElementById('mpRowIdx').value];
     if (!b) return;
     if (!b.event_id) { alert('この行には削除できる登録がありません'); return; }
-    if (!confirm(`${b.text.replace(/^・/, '')}
-この登録を削除しますか？
-（一覧から外れ、状態未登録になります）`)) return;
+
+    // 予約・修理などの取り消しは、他に予定がなければ在庫に戻すのが自然。
+    // 在庫行の削除は「一覧から外す」操作なので在庫化しない。
+    const restock = b.kind !== '在庫';
+    const label = b.text.replace(/^・/, '');
+    const msg = restock
+        ? `${label}
+この${b.kind}を取り消して、在庫に戻しますか？`
+        : `${label}
+この在庫登録を削除しますか？
+（一覧から外れ、状態未登録になります）`;
+    if (!confirm(msg)) return;
     closeMorningRowMenu();
-    await fetch(API + '/api/events/' + b.event_id, { method: 'DELETE' });
+
+    await fetch(API + '/api/morning-report/entry/' + b.event_id + '/remove', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ restock, date: document.getElementById('morningDate').value })
+    });
     events = await fetch(API + '/api/events').then(r => r.json());
     renderCurrentPage();
     loadMorningPreview();

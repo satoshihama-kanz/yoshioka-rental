@@ -2099,6 +2099,43 @@ def api_morning_report_preview():
     blocks = build_morning_blocks(d)
     return jsonify({'date': d, 'message': blocks_to_text(blocks), 'blocks': blocks})
 
+@app.route('/api/morning-report/entry/<int:eid>/remove', methods=['POST'])
+@login_required
+def api_morning_entry_remove(eid):
+    """プレビューから登録を取り消す。
+
+    予約・修理などを取り消した車両は、他に予定がなければ本来「在庫」に戻る。
+    単にイベントを消すだけだと状態未登録に落ちてしまうため、
+    restock 指定時は在庫として登録し直す。グループLINEへの通知は行わない。
+    """
+    body    = request.get_json() or {}
+    restock = bool(body.get('restock'))
+    d       = body.get('date') or today_jst()
+
+    conn = get_db()
+    row  = conn.execute('SELECT * FROM events WHERE id=?', (eid,)).fetchone()
+    if not row:
+        conn.close()
+        return jsonify({'error': 'not found'}), 404
+    vehicle_id = row['vehicle_id']
+    conn.execute('DELETE FROM events WHERE id=?', (eid,))
+
+    restocked = False
+    if restock:
+        v = conn.execute('SELECT region FROM vehicles WHERE id=?', (vehicle_id,)).fetchone()
+        loc = (v['region'] or '') if v else ''
+        conn.execute(
+            '''INSERT INTO events
+               (vehicle_id,status,start_date,end_date,staff,client,category,notes,created_at,location)
+               VALUES (?,?,?,?,?,?,?,?,?,?)''',
+            (vehicle_id, '在庫', d, None, '', '', '', '',
+             datetime.now(JST).strftime('%Y-%m-%d %H:%M:%S'), loc))
+        restocked = True
+
+    conn.commit()
+    conn.close()
+    return jsonify({'ok': True, 'restocked': restocked, 'vehicle_id': vehicle_id})
+
 @app.route('/api/morning-report/send', methods=['POST'])
 @login_required
 def api_morning_report_send():
