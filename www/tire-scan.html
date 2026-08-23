@@ -1,0 +1,310 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>タイヤ登録｜吉岡商会</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
+body{font-family:'Hiragino Kaku Gothic ProN','Meiryo',sans-serif;background:#eef1f5;color:#222;
+     padding-bottom:40px;font-size:16px;-webkit-text-size-adjust:100%}
+header{background:#1a3a5c;color:#fff;padding:12px 16px}
+header .ttl{font-size:15px;font-weight:bold}
+header .sub{font-size:11px;opacity:.75}
+.wrap{padding:14px}
+.card{background:#fff;border-radius:14px;padding:16px;box-shadow:0 2px 8px rgba(0,0,0,.08);margin-bottom:14px}
+.tid{font-size:34px;font-weight:bold;letter-spacing:1px;line-height:1.1}
+.badge{display:inline-block;padding:4px 14px;border-radius:20px;font-size:15px;font-weight:bold;color:#fff;vertical-align:middle}
+.badge.summer{background:#F57C00}
+.badge.winter{background:#0288D1}
+.vinfo{margin-top:10px;font-size:17px;font-weight:bold}
+.vnum{font-size:13px;color:#666;font-weight:normal;margin-top:2px}
+.state{margin-top:12px;padding:10px 12px;border-radius:10px;background:#f5f7fa;font-size:14px;line-height:1.8}
+.pill{display:inline-block;padding:2px 10px;border-radius:12px;font-size:13px;font-weight:bold;margin-left:4px}
+.pill.on{background:#E8F5E9;color:#2E7D32}
+.pill.store{background:#E3F2FD;color:#1565C0}
+.pill.warn{background:#FFF3E0;color:#EF6C00}
+.pill.bad{background:#FFEBEE;color:#C62828}
+.pill.gray{background:#eceff1;color:#607D8B}
+.big{display:block;width:100%;padding:20px 14px;margin-bottom:12px;border:none;border-radius:14px;
+     font-size:20px;font-weight:bold;color:#fff;font-family:inherit;cursor:pointer;text-align:left}
+.big small{display:block;font-size:12px;font-weight:normal;opacity:.85;margin-top:3px}
+.big.mount{background:#2E7D32}
+.big.dismount{background:#1565C0}
+.big.status{background:#EF6C00}
+.opt{display:block;width:100%;padding:16px;margin-bottom:10px;border:2px solid #cfd8dc;background:#fff;
+     border-radius:12px;font-size:18px;font-weight:bold;font-family:inherit;color:#333;cursor:pointer;text-align:left}
+.opt.sel{border-color:#1a3a5c;background:#e8eef5;color:#1a3a5c}
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(74px,1fr));gap:10px}
+.grid .opt{margin:0;text-align:center;padding:18px 6px;font-size:22px}
+h3{font-size:14px;color:#555;margin:0 0 10px;font-weight:bold}
+.row{display:flex;gap:10px;margin-bottom:12px}
+.row .btn2{flex:1}
+.btn2{padding:15px;border:none;border-radius:12px;font-size:17px;font-weight:bold;font-family:inherit;cursor:pointer}
+.btn2.go{background:#1a3a5c;color:#fff}
+.btn2.go:disabled{background:#b0bec5}
+.btn2.back{background:#eceff1;color:#455a64}
+select,input[type=date],textarea{width:100%;padding:13px;font-size:16px;font-family:inherit;
+     border:1px solid #cfd8dc;border-radius:10px;background:#fff}
+.msg{padding:12px 14px;border-radius:10px;font-size:14px;line-height:1.6;margin-bottom:12px}
+.msg.err{background:#FFEBEE;color:#C62828;border:1px solid #ffcdd2}
+.msg.warn{background:#FFF8E1;color:#EF6C00;border:1px solid #ffe082}
+.done{text-align:center;padding:26px 16px}
+.done .mark{font-size:64px;line-height:1}
+.done h2{font-size:22px;margin:10px 0 6px;color:#2E7D32}
+.mini{font-size:12px;color:#78909c;text-align:center;margin-top:16px;line-height:1.7}
+</style>
+</head>
+<body>
+
+<header>
+  <div class="ttl">🛞 タイヤ登録</div>
+  <div class="sub">吉岡商会 車両管理システム</div>
+</header>
+
+<div class="wrap" id="root">
+  <div class="card">読み込み中…</div>
+</div>
+
+<script>
+var TIRE_ID = decodeURIComponent((location.pathname.split("/").filter(Boolean).pop() || ""));
+var DATA = null, STEP = "menu", PICK = {};
+var root = document.getElementById("root");
+
+function el(id){ return document.getElementById(id); }
+function esc(s){
+  if(s === null || s === undefined) return "";
+  return String(s).replace(/[&<>"]/g, function(c){
+    return {"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;"}[c];
+  });
+}
+function q(s){ return esc(s).replace(/'/g, "&#39;"); }
+
+function load(){
+  fetch("/api/tires/" + encodeURIComponent(TIRE_ID))
+    .then(function(r){
+      return r.json().then(function(j){ return {ok:r.ok, j:j}; });
+    })
+    .then(function(res){
+      if(!res.ok){
+        root.innerHTML = '<div class="card"><div class="msg err">' + esc(res.j.error || "読み込めませんでした") +
+          "<br>タイヤID：" + esc(TIRE_ID) + "</div></div>";
+        return;
+      }
+      DATA = res.j; STEP = "menu"; PICK = {};
+      render();
+    })
+    .catch(function(){
+      root.innerHTML = '<div class="card"><div class="msg err">通信できませんでした。電波を確認して、もう一度QRを読み取ってください。</div></div>';
+    });
+}
+
+function headCard(){
+  var t = DATA.tire, c = DATA.config, statePill;
+  if(t.status === "廃棄済み")        statePill = '<span class="pill bad">廃棄済み</span>';
+  else if(t.place === c.place_on)    statePill = '<span class="pill on">装着中</span>';
+  else if(t.place)                   statePill = '<span class="pill store">' + esc(t.location_label) + "</span>";
+  else                               statePill = '<span class="pill gray">保管場所 未設定</span>';
+  var repPill = "";
+  if(t.replace_flag === "そろそろ交換") repPill = '<span class="pill warn">そろそろ交換</span>';
+  if(t.replace_flag === "要交換")       repPill = '<span class="pill bad">要交換</span>';
+  return '<div class="card">'
+    + '<div class="tid">' + esc(t.tire_id) + ' <span class="badge ' + t.season + '">' + esc(t.season_label) + "</span></div>"
+    + '<div class="vinfo">' + esc(t.car_type || "") + "　" + esc(t.number || "") + "</div>"
+    + '<div class="vnum">' + esc(t.full_number || "") + "</div>"
+    + '<div class="state">現在：' + statePill + repPill
+    + "<br>タイヤ状態：" + esc(t.status)
+    + (t.updated_at ? '<br><span style="color:#90a4ae;font-size:12px;">最終更新 ' + esc(t.updated_at) + "</span>" : "")
+    + "</div></div>";
+}
+
+function staffCard(){
+  return '<div class="card"><h3>担当者（任意）</h3>'
+    + '<select id="staffSel"><option value="">選択しない</option></select>'
+    + '<div class="mini" style="text-align:left;margin-top:6px;">一度選ぶと次回から自動で選ばれます</div></div>';
+}
+
+function fillStaff(){
+  var sel = el("staffSel");
+  if(!sel) return;
+  fetch("/api/liff/staff").then(function(r){ return r.json(); }).then(function(rows){
+    var saved = localStorage.getItem("tire_staff") || "";
+    rows.forEach(function(s){
+      var o = document.createElement("option");
+      o.value = s.name; o.textContent = s.name;
+      if(s.name === saved) o.selected = true;
+      sel.appendChild(o);
+    });
+  }).catch(function(){});
+}
+
+function pairCard(p, title, primary){
+  return '<div class="card"><h3>' + esc(title) + "</h3>"
+    + '<div style="font-size:16px;font-weight:bold;">' + esc(p.tire_id)
+    + ' <span class="badge ' + p.season + '" style="font-size:12px;padding:2px 10px;">' + esc(p.season_label) + "</span></div>"
+    + '<div style="font-size:14px;color:#555;margin-top:4px;">' + esc(p.location_label) + "　／　" + esc(p.status) + "</div>"
+    + '<button class="btn2 ' + (primary ? "go" : "back") + '" style="width:100%;margin-top:10px;" '
+    + 'onclick="goTire(\'' + q(p.tire_id) + '\')">' + esc(p.season_label) + "タイヤを登録する</button></div>";
+}
+
+function goTire(tid){ location.href = "/t/" + encodeURIComponent(tid); }
+
+function render(){
+  var t = DATA.tire, c = DATA.config, h = headCard(), i;
+
+  if(STEP === "menu"){
+    if(t.status === "廃棄済み"){
+      h += '<div class="card"><div class="msg err">このタイヤは廃棄済みとして登録されています（'
+         + esc(t.disposed_date || "") + "　" + esc(t.disposed_reason || "")
+         + "）。<br>間違いの場合は事務所に連絡してください。</div></div>";
+    }else{
+      h += '<h3 style="padding:0 4px;">作業内容を選んでください</h3>';
+      if(t.place !== c.place_on){
+        h += '<button class="big mount" onclick="go(\'mount\')">🚗 車に装着'
+           + "<small>このタイヤを車に取り付けた</small></button>";
+        h += '<button class="big dismount" onclick="go(\'dismount\')">📦 保管場所を登録'
+           + "<small>置き場所・棚を決める／変える</small></button>";
+      }else{
+        h += '<button class="big dismount" onclick="go(\'dismount\')">📦 車から取り外し'
+           + "<small>外して保管場所へ置く</small></button>";
+      }
+      h += '<button class="big status" onclick="go(\'status\')">⚠️ 状態変更'
+         + "<small>そろそろ交換／要交換／廃棄</small></button>";
+    }
+    if(DATA.pair) h += pairCard(DATA.pair, "対になるタイヤ", false);
+  }
+
+  else if(STEP === "mount"){
+    h += '<div class="card"><div class="msg warn" style="margin:0;">この' + esc(t.season_label)
+       + "タイヤを <b>" + esc(t.car_type || "") + "　" + esc(t.number || "")
+       + "</b> に取り付けたとして登録します。</div></div>";
+    h += staffCard();
+    h += '<div class="row"><button class="btn2 back" onclick="go(\'menu\')">戻る</button>'
+       + '<button class="btn2 go" onclick="submit()">送信する</button></div>';
+  }
+
+  else if(STEP === "dismount"){
+    h += '<div class="card"><h3>保管場所を選ぶ</h3>';
+    for(i = 0; i < c.sites.length; i++){
+      h += '<button class="opt' + (PICK.place === c.sites[i] ? " sel" : "") + '" '
+         + 'onclick="setPick(\'place\',\'' + q(c.sites[i]) + '\')">' + esc(c.sites[i]) + "</button>";
+    }
+    h += "</div>";
+    if(PICK.place){
+      h += '<div class="card"><h3>保管棚を選ぶ</h3><div class="grid">';
+      for(i = 0; i < c.shelves.length; i++){
+        h += '<button class="opt' + (PICK.shelf === c.shelves[i] ? " sel" : "") + '" '
+           + 'onclick="setPick(\'shelf\',\'' + q(c.shelves[i]) + '\')">' + esc(c.shelves[i]) + "</button>";
+      }
+      h += "</div></div>";
+    }
+    h += staffCard();
+    h += '<div class="row"><button class="btn2 back" onclick="go(\'menu\')">戻る</button>'
+       + '<button class="btn2 go" ' + (PICK.place ? "" : "disabled") + ' onclick="submit()">送信する</button></div>';
+  }
+
+  else if(STEP === "status"){
+    h += '<div class="card"><h3>タイヤの状態</h3>';
+    for(i = 0; i < c.replace_flags.length; i++){
+      h += '<button class="opt' + (PICK.rep === c.replace_flags[i] ? " sel" : "") + '" '
+         + 'onclick="setPick(\'rep\',\'' + q(c.replace_flags[i]) + '\')">' + esc(c.replace_flags[i]) + "</button>";
+    }
+    h += '<button class="opt' + (PICK.rep === "__dispose__" ? " sel" : "") + '" '
+       + 'style="border-color:#ef9a9a;color:#c62828;" onclick="setPick(\'rep\',\'__dispose__\')">🗑 廃棄した</button></div>';
+    if(PICK.rep === "__dispose__"){
+      h += '<div class="card"><h3>廃棄理由</h3>';
+      for(i = 0; i < c.dispose_reasons.length; i++){
+        h += '<button class="opt' + (PICK.reason === c.dispose_reasons[i] ? " sel" : "") + '" '
+           + 'onclick="setPick(\'reason\',\'' + q(c.dispose_reasons[i]) + '\')">' + esc(c.dispose_reasons[i]) + "</button>";
+      }
+      h += '<h3 style="margin-top:14px;">廃棄日</h3><input type="date" id="dispDate" value="' + todayStr() + '"></div>';
+    }
+    h += '<div class="card"><h3>備考（任意）</h3><textarea id="noteBox" rows="2" placeholder="溝が少ない など"></textarea></div>';
+    h += staffCard();
+    var ok = PICK.rep && (PICK.rep !== "__dispose__" || PICK.reason);
+    h += '<div class="row"><button class="btn2 back" onclick="go(\'menu\')">戻る</button>'
+       + '<button class="btn2 go" ' + (ok ? "" : "disabled") + ' onclick="submit()">送信する</button></div>';
+  }
+
+  root.innerHTML = h;
+  fillStaff();
+}
+
+function todayStr(){
+  var d = new Date(Date.now() + 9 * 3600 * 1000);
+  return d.toISOString().slice(0, 10);
+}
+function go(s){ STEP = s; PICK = {}; render(); window.scrollTo(0, 0); }
+function setPick(k, v){
+  PICK[k] = (PICK[k] === v ? null : v);
+  if(k === "rep") PICK.reason = null;
+  render();
+}
+
+function submit(){
+  var staffSel = el("staffSel");
+  var staff = staffSel ? staffSel.value : "";
+  if(staff) localStorage.setItem("tire_staff", staff);
+  var noteBox = el("noteBox");
+  var body = { staff: staff, note: noteBox ? noteBox.value : "" };
+
+  if(STEP === "mount"){
+    body.action = "mount";
+  }else if(STEP === "dismount"){
+    body.action = "dismount";
+    body.place = PICK.place;
+    body.shelf = PICK.shelf || "";
+  }else if(STEP === "status"){
+    body.action = "status";
+    if(PICK.rep === "__dispose__"){
+      body.dispose = true;
+      body.disposed_reason = PICK.reason;
+      var dd = el("dispDate");
+      body.disposed_date = dd ? dd.value : "";
+    }else{
+      body.replace_flag = PICK.rep;
+    }
+  }
+
+  var btns = document.querySelectorAll(".btn2");
+  for(var i = 0; i < btns.length; i++) btns[i].disabled = true;
+
+  fetch("/api/tires/" + encodeURIComponent(TIRE_ID) + "/action", {
+    method: "POST",
+    headers: {"Content-Type": "application/json"},
+    body: JSON.stringify(body)
+  }).then(function(r){
+    return r.json().then(function(j){ return {ok: r.ok, j: j}; });
+  }).then(function(res){
+    if(!res.ok){
+      alert(res.j.error || "登録できませんでした");
+      for(var i = 0; i < btns.length; i++) btns[i].disabled = false;
+      return;
+    }
+    showDone(res.j);
+  }).catch(function(){
+    alert("通信できませんでした。もう一度お試しください。");
+    for(var i = 0; i < btns.length; i++) btns[i].disabled = false;
+  });
+}
+
+function showDone(j){
+  var t = j.tire, p = j.pair;
+  var h = '<div class="card done"><div class="mark">✅</div><h2>登録しました</h2>'
+    + '<div style="font-size:17px;font-weight:bold;margin-top:8px;">' + esc(t.tire_id) + "　" + esc(t.season_label) + "タイヤ</div>"
+    + '<div style="font-size:15px;color:#555;margin-top:4px;">' + esc(t.car_type || "") + "　" + esc(t.number || "") + "</div>"
+    + '<div style="font-size:16px;margin-top:10px;">→ ' + esc(t.location_label) + "　／　" + esc(t.status) + "</div></div>";
+  (j.warnings || []).forEach(function(w){
+    h += '<div class="msg warn">⚠️ ' + esc(w) + "</div>";
+  });
+  if(p && p.status !== "廃棄済み") h += pairCard(p, "続けて登録する", true);
+  h += '<button class="btn2 back" style="width:100%;" onclick="load()">このタイヤの画面に戻る</button>';
+  h += '<div class="mini">次のタイヤは、スマホのカメラでQRを読み取ってください。</div>';
+  root.innerHTML = h;
+  window.scrollTo(0, 0);
+}
+
+load();
+</script>
+</body>
+</html>

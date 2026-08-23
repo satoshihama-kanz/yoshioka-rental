@@ -1,0 +1,222 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>タイヤQRラベル印刷｜吉岡商会</title>
+<link rel="stylesheet" href="/style.css?v=20260824a">
+<style>
+.panel{background:#fff;border-radius:10px;padding:12px;box-shadow:0 1px 4px rgba(0,0,0,.1);margin-bottom:12px}
+.panel h3{font-size:13px;color:#1a3a5c;margin-bottom:10px}
+.ctl{display:flex;gap:8px;align-items:center;flex-wrap:wrap;font-size:13px}
+.ctl select,.ctl input{padding:6px 8px;border:1px solid #cfd8dc;border-radius:6px;font-family:inherit;font-size:13px}
+.picklist{max-height:260px;overflow:auto;border:1px solid #eceff1;border-radius:8px}
+table.pick{width:100%;border-collapse:collapse;font-size:12px}
+table.pick th{background:#f5f7fa;color:#546e7a;font-size:11px;padding:6px;text-align:left;position:sticky;top:0}
+table.pick td{padding:5px 6px;border-bottom:1px solid #f0f2f5}
+table.pick tr:hover{background:#f0f6fb}
+.tw{display:inline-block;padding:1px 7px;border-radius:9px;font-size:11px;font-weight:bold;color:#fff}
+.tw.summer{background:#F57C00}
+.tw.winter{background:#0288D1}
+
+/* ── ラベル ── */
+.sheet{background:#fff;padding:8mm;box-shadow:0 1px 6px rgba(0,0,0,.15);width:210mm;margin:0 auto 10px;
+       display:grid;grid-template-columns:repeat(2,1fr);grid-auto-rows:45mm;gap:2mm}
+.label{border:1px dashed #b0bec5;border-radius:2mm;padding:3mm;display:flex;gap:3mm;align-items:center;overflow:hidden}
+.label .qr{width:34mm;height:34mm;flex:0 0 34mm;display:flex;align-items:center;justify-content:center}
+.label .qr img,.label .qr canvas{width:34mm !important;height:34mm !important}
+.label .info{flex:1;min-width:0;line-height:1.25}
+.label .lid{font-size:26pt;font-weight:bold;letter-spacing:.5pt}
+.label .lseason{display:inline-block;padding:1mm 3mm;border-radius:4mm;color:#fff;font-size:11pt;font-weight:bold;
+       vertical-align:middle;margin-left:2mm}
+.label .lseason.summer{background:#F57C00}
+.label .lseason.winter{background:#0288D1}
+.label .lcar{font-size:14pt;font-weight:bold;margin-top:1.5mm;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.label .lnum{font-size:9pt;color:#555;margin-top:.5mm}
+.label .lfoot{font-size:7pt;color:#888;margin-top:1.5mm}
+.hint{font-size:12px;color:#607D8B;line-height:1.8}
+
+@media print{
+  header,.dept-tabs,.noprint{display:none !important}
+  body{background:#fff !important;padding:0 !important;margin:0 !important}
+  .content{padding:0 !important;margin:0 !important}
+  .sheet{box-shadow:none;margin:0;padding:0;width:auto;page-break-after:always}
+  .label{border:1px dashed #cfd8dc}
+  @page{size:A4;margin:8mm}
+}
+</style>
+</head>
+<body>
+
+<header class="noprint">
+  <div>
+    <h1>🏷 タイヤQRラベル印刷</h1>
+    <div class="subtitle" style="font-size:11px;color:#90a4ae;">吉岡商会 車両管理システム</div>
+  </div>
+  <div class="header-right">
+    <button class="btn btn-hdr btn-primary" onclick="window.print()">🖨 印刷する</button>
+    <a href="/tires" class="btn btn-hdr" style="background:#607D8B;color:#fff;text-decoration:none;">🛞 タイヤ管理へ</a>
+  </div>
+</header>
+
+<div class="content">
+
+  <div class="panel noprint">
+    <h3>1. 印刷するタイヤを選ぶ</h3>
+    <div class="ctl">
+      <select id="fDept" onchange="loadRows()">
+        <option value="rental">レンタカー事業部</option>
+        <option value="sales">セールス部門（代車）</option>
+      </select>
+      <select id="fSeason" onchange="loadRows()">
+        <option value="">夏・冬 両方</option>
+        <option value="summer">夏タイヤのみ</option>
+        <option value="winter">冬タイヤのみ</option>
+      </select>
+      <input type="text" id="fQ" placeholder="車番・車種で絞り込み" oninput="renderPick()">
+      <span style="margin-left:auto;"></span>
+      <button class="btn btn-outline btn-sm" onclick="pickFirst(10)">先頭10枚だけ選ぶ</button>
+      <button class="btn btn-outline btn-sm" onclick="pickAll(true)">表示中をすべて選ぶ</button>
+      <button class="btn btn-outline btn-sm" onclick="pickAll(false)">選択を解除</button>
+    </div>
+    <div class="picklist" style="margin-top:10px;"><div id="pickBody"></div></div>
+    <div style="margin-top:8px;font-size:12px;color:#455a64;">
+      選択中 <b id="selCount">0</b> 枚
+      <button class="btn btn-primary btn-sm" style="margin-left:10px;" onclick="build()">プレビューを作る</button>
+    </div>
+  </div>
+
+  <div class="panel noprint">
+    <h3>2. 印刷のしかた</h3>
+    <div class="hint">
+      ・ラベルは A4 に 2列×6行＝12枚並びます。破線でカットして、タイヤ4本のうち1本に貼ってください。<br>
+      ・QRの行き先は <code id="originHint" style="background:#f5f7fa;padding:1px 5px;border-radius:4px;"></code> です。<br>
+      ・現場はスマホの標準カメラでQRを写すだけで登録画面が開きます（専用アプリは不要）。<br>
+      ・QRが汚れて読めなくなっても、ラベルの文字（タイヤID・車種・車番・夏冬）で判別できます。<br>
+      ・打ち合わせ用は「先頭10枚だけ選ぶ」を押してから印刷してください。
+    </div>
+  </div>
+
+  <div id="sheets"></div>
+
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+<script>
+var ROWS = [], SEL = {}, PER_SHEET = 12;
+
+function el(id){ return document.getElementById(id); }
+function esc(s){
+  if(s === null || s === undefined) return "";
+  return String(s).replace(/[&<>"]/g, function(c){
+    return {"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;"}[c];
+  });
+}
+function q(s){ return esc(s).replace(/'/g, "&#39;"); }
+
+el("originHint").textContent = location.origin + "/t/S-001";
+
+// ローカル環境で刷ると QR が localhost を指してしまい、現場のスマホから開けない
+if(/^(localhost|127\.0\.0\.1|192\.168\.|10\.)/.test(location.hostname)){
+  var w = document.createElement("div");
+  w.className = "panel noprint";
+  w.style.cssText = "background:#FFEBEE;border:1px solid #ffcdd2;color:#C62828;font-size:13px;line-height:1.7";
+  w.innerHTML = "<b>⚠️ この画面はテスト環境（" + esc(location.host) + "）です。</b><br>"
+    + "ここで印刷したQRは社外のスマホから開けません。本番のURL（onrender.com）でログインしてから印刷してください。";
+  document.querySelector(".content").insertBefore(w, document.querySelector(".content").firstChild);
+}
+
+function loadRows(){
+  var p = "dept=" + el("fDept").value;
+  if(el("fSeason").value) p += "&season=" + el("fSeason").value;
+  fetch("/api/tires/labels?" + p).then(function(r){ return r.json(); }).then(function(rows){
+    ROWS = rows; SEL = {};
+    renderPick();
+  });
+}
+
+function visible(){
+  var k = el("fQ").value.trim();
+  if(!k) return ROWS;
+  return ROWS.filter(function(t){
+    return (t.tire_id || "").indexOf(k) >= 0 || (t.number || "").indexOf(k) >= 0
+        || (t.car_type || "").indexOf(k) >= 0;
+  });
+}
+
+function renderPick(){
+  var rows = visible();
+  if(!rows.length){
+    el("pickBody").innerHTML = '<div style="padding:26px;text-align:center;color:#90a4ae;font-size:13px;">'
+      + "タイヤが登録されていません。タイヤ管理の「設定」タブでタイヤセットを作ってください。</div>";
+    updateCount();
+    return;
+  }
+  var h = '<table class="pick"><thead><tr><th style="width:26px;"></th><th>タイヤID</th><th>夏冬</th>'
+        + "<th>車番</th><th>車種</th><th>ナンバー</th></tr></thead><tbody>";
+  rows.forEach(function(t){
+    h += '<tr onclick="toggleRow(\'' + q(t.tire_id) + '\')">'
+      + '<td><input type="checkbox" data-tid="' + q(t.tire_id) + '" ' + (SEL[t.tire_id] ? "checked" : "")
+      + ' onclick="event.stopPropagation();toggleRow(\'' + q(t.tire_id) + '\')"></td>'
+      + '<td style="font-weight:bold;">' + esc(t.tire_id) + "</td>"
+      + '<td><span class="tw ' + t.season + '">' + esc(t.season_label) + "</span></td>"
+      + '<td style="font-weight:bold;">' + esc(t.number || "") + "</td>"
+      + "<td>" + esc(t.car_type || "") + "</td>"
+      + '<td style="color:#78909c;">' + esc(t.full_number || "") + "</td></tr>";
+  });
+  el("pickBody").innerHTML = h + "</tbody></table>";
+  updateCount();
+}
+
+function toggleRow(tid){
+  if(SEL[tid]) delete SEL[tid]; else SEL[tid] = 1;
+  renderPick();
+}
+function pickAll(on){
+  visible().forEach(function(t){ if(on) SEL[t.tire_id] = 1; else delete SEL[t.tire_id]; });
+  renderPick();
+}
+function pickFirst(n){
+  SEL = {};
+  visible().slice(0, n).forEach(function(t){ SEL[t.tire_id] = 1; });
+  renderPick();
+}
+function updateCount(){ el("selCount").textContent = Object.keys(SEL).length; }
+
+function build(){
+  var chosen = ROWS.filter(function(t){ return SEL[t.tire_id]; });
+  if(!chosen.length){ alert("印刷するタイヤを選んでください"); return; }
+  if(typeof QRCode === "undefined"){
+    alert("QRの生成部品を読み込めませんでした。ネットワークを確認して、ページを再読み込みしてください。");
+    return;
+  }
+  var box = el("sheets");
+  box.innerHTML = "";
+  for(var i = 0; i < chosen.length; i += PER_SHEET){
+    var sheet = document.createElement("div");
+    sheet.className = "sheet";
+    chosen.slice(i, i + PER_SHEET).forEach(function(t){
+      var d = document.createElement("div");
+      d.className = "label";
+      d.innerHTML = '<div class="qr"></div><div class="info">'
+        + '<div class="lid">' + esc(t.tire_id)
+        + '<span class="lseason ' + t.season + '">' + esc(t.season_label) + "</span></div>"
+        + '<div class="lcar">' + esc(t.car_type || "") + "　" + esc(t.number || "") + "</div>"
+        + '<div class="lnum">' + esc(t.full_number || "") + "</div>"
+        + '<div class="lfoot">吉岡商会 タイヤ管理　スマホのカメラでQRを読む</div></div>';
+      sheet.appendChild(d);
+      new QRCode(d.querySelector(".qr"), {
+        text: location.origin + "/t/" + t.tire_id,
+        width: 256, height: 256,
+        correctLevel: QRCode.CorrectLevel.M
+      });
+    });
+    box.appendChild(sheet);
+  }
+  box.scrollIntoView({behavior: "smooth"});
+}
+
+loadRows();
+</script>
+</body>
+</html>

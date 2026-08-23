@@ -2988,6 +2988,11 @@ def admin_line_push():
 
 # ── 起動 ─────────────────────────────────────────────────
 init_db()
+
+# ── タイヤ管理モジュール（既存機能には影響しない追加分） ──────────
+from tires import init_tires
+init_tires(app, get_db, login_required, today_jst)
+
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 5000))
     app.run(host='0.0.0.0', port=port, debug=False)

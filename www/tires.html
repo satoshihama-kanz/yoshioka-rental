@@ -1,0 +1,549 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>タイヤ管理｜吉岡商会</title>
+<link rel="stylesheet" href="/style.css?v=20260824a">
+<style>
+.tire-sub{font-size:11px;color:#90a4ae}
+.swapbar{background:#fff;border-radius:10px;padding:10px 12px;margin-bottom:10px;
+         display:flex;align-items:center;gap:14px;flex-wrap:wrap;box-shadow:0 1px 4px rgba(0,0,0,.1)}
+.swapbar .seg{display:flex;border:1px solid #cfd8dc;border-radius:8px;overflow:hidden}
+.swapbar .seg button{border:none;background:#fff;padding:6px 14px;font-size:13px;font-weight:bold;
+         font-family:inherit;cursor:pointer;color:#607D8B}
+.swapbar .seg button.on{background:#1a3a5c;color:#fff}
+.swapbar .kpi{font-size:13px;color:#455a64}
+.swapbar .kpi b{font-size:18px;margin:0 3px}
+table.tire{width:100%;border-collapse:collapse;background:#fff;font-size:12px}
+table.tire th{background:#f5f7fa;color:#546e7a;font-size:11px;padding:7px 6px;text-align:left;
+         position:sticky;top:0;border-bottom:2px solid #e0e0e0;white-space:nowrap;z-index:2}
+table.tire td{padding:6px;border-bottom:1px solid #eceff1;white-space:nowrap}
+table.tire tbody tr:hover{background:#f0f6fb;cursor:pointer}
+.tw{display:inline-block;padding:1px 8px;border-radius:10px;font-size:11px;font-weight:bold;color:#fff}
+.tw.summer{background:#F57C00}
+.tw.winter{background:#0288D1}
+.chip{display:inline-block;padding:1px 8px;border-radius:10px;font-size:11px;font-weight:bold}
+.chip.on{background:#E8F5E9;color:#2E7D32}
+.chip.store{background:#E3F2FD;color:#1565C0}
+.chip.unset{background:#eceff1;color:#78909c}
+.chip.warn{background:#FFF3E0;color:#EF6C00}
+.chip.bad{background:#FFEBEE;color:#C62828}
+.chip.gone{background:#f5f5f5;color:#9e9e9e}
+.tablewrap{max-height:calc(100vh - 330px);overflow:auto;border-radius:10px;box-shadow:0 1px 4px rgba(0,0,0,.1)}
+.shelfgrid{display:grid;gap:12px;grid-template-columns:repeat(auto-fit,minmax(280px,1fr))}
+.sitecard{background:#fff;border-radius:12px;padding:14px;box-shadow:0 1px 4px rgba(0,0,0,.1)}
+.sitecard h3{font-size:14px;color:#1a3a5c;margin-bottom:10px;border-bottom:1px solid #eceff1;padding-bottom:6px}
+.shelfrow{display:flex;align-items:center;gap:10px;padding:7px 4px;border-bottom:1px dashed #eceff1;cursor:pointer}
+.shelfrow:hover{background:#f0f6fb}
+.shelfrow .nm{font-size:20px;font-weight:bold;color:#1a3a5c;width:42px;text-align:center}
+.shelfrow .bar{flex:1;height:12px;background:#eceff1;border-radius:6px;overflow:hidden}
+.shelfrow .bar i{display:block;height:100%;background:#1565C0}
+.shelfrow .n{font-size:13px;font-weight:bold;width:62px;text-align:right;color:#455a64}
+.bulkbar{background:#FFF8E1;border:1px solid #ffe082;border-radius:10px;padding:8px 12px;
+         margin-bottom:8px;display:flex;align-items:center;gap:8px;flex-wrap:wrap;font-size:12px}
+.hist{font-size:12px;border-top:1px solid #eceff1;padding:7px 0;line-height:1.6}
+.hist .when{color:#90a4ae;font-size:11px}
+.fgrid{display:grid;grid-template-columns:96px 1fr;gap:8px 10px;align-items:center;font-size:13px}
+.fgrid label{color:#607D8B;font-size:12px}
+.fgrid select,.fgrid input,.fgrid textarea{width:100%;padding:7px 8px;border:1px solid #cfd8dc;
+         border-radius:6px;font-size:13px;font-family:inherit}
+.setrow{display:flex;gap:8px;align-items:center;margin-bottom:8px;font-size:13px}
+.setrow input{flex:1;padding:7px 8px;border:1px solid #cfd8dc;border-radius:6px;font-family:inherit;font-size:13px}
+.empty{padding:40px 20px;text-align:center;color:#90a4ae;font-size:13px;background:#fff;border-radius:10px}
+</style>
+</head>
+<body>
+
+<header>
+  <div>
+    <h1>🛞 タイヤ管理</h1>
+    <div class="subtitle tire-sub" id="lastUpdated">吉岡商会 車両管理システム</div>
+  </div>
+  <div class="header-right">
+    <span class="total-badge" id="totalBadge">0 セット</span>
+    <a href="/tires/labels" class="btn btn-hdr" style="background:#455a64;color:#fff;text-decoration:none;">🏷 ﾗﾍﾞﾙ印刷</a>
+    <a href="/" class="btn btn-hdr" style="background:#607D8B;color:#fff;text-decoration:none;">🚗 車両管理へ</a>
+  </div>
+</header>
+
+<div class="dept-tabs">
+  <div class="dept-tab active" id="deptTab-rental" onclick="switchDept('rental')">🚙 レンタカー事業部</div>
+  <div class="dept-tab" id="deptTab-sales" onclick="switchDept('sales')">🏢 セールス部門（代車）</div>
+</div>
+
+<div class="tabs">
+  <div class="tab active" data-page="list"    onclick="showPage('list')">📋 一覧</div>
+  <div class="tab" data-page="replace" onclick="showPage('replace')">🔧 買い替え</div>
+  <div class="tab" data-page="shelf"   onclick="showPage('shelf')">🗄 棚マップ</div>
+  <div class="tab" data-page="disposed" onclick="showPage('disposed')">🗑 廃棄履歴</div>
+  <div class="tab" data-page="setup"   onclick="showPage('setup')">⚙️ 設定</div>
+</div>
+
+<div class="content">
+
+  <div class="summary-cards" id="statCards"></div>
+
+  <div class="swapbar">
+    <span style="font-size:12px;color:#607D8B;font-weight:bold;">今シーズン</span>
+    <span class="seg">
+      <button id="segSummer" onclick="setSeason('summer')">夏</button>
+      <button id="segWinter" onclick="setSeason('winter')">冬</button>
+    </span>
+    <span class="kpi">交換済 <b style="color:#2E7D32" id="swDone">-</b>台</span>
+    <span class="kpi">未交換 <b style="color:#C62828" id="swNot">-</b>台</span>
+    <span class="kpi">不明 <b style="color:#90a4ae" id="swUnk">-</b>台</span>
+    <button class="btn btn-outline btn-sm" onclick="showNotSwapped()">未交換の車両を見る</button>
+  </div>
+
+  <!-- 一覧 -->
+  <div class="page active" id="page-list">
+    <div class="filter-bar" style="padding:8px 10px;gap:6px;border-radius:10px;margin-bottom:8px;">
+      <select id="fSeason" onchange="loadList()"><option value="">夏冬：すべて</option><option value="summer">夏</option><option value="winter">冬</option></select>
+      <select id="fPlace" onchange="loadList()"><option value="">現在地：すべて</option></select>
+      <select id="fShelf" onchange="loadList()"><option value="">棚：すべて</option></select>
+      <select id="fStatus" onchange="loadList()"><option value="">状態：すべて</option></select>
+      <select id="fRep" onchange="loadList()"><option value="">買い替え：すべて</option></select>
+      <input type="text" id="fQ" placeholder="タイヤID・車番・車種…" oninput="debouncedList()">
+      <button class="btn btn-outline btn-sm" onclick="clearFilters()">ｸﾘｱ</button>
+      <span id="listCount" style="font-size:11px;color:#888;"></span>
+    </div>
+    <div class="bulkbar" id="bulkBar" style="display:none;">
+      <b id="bulkCount">0件</b> 選択中 ／ 保管場所をまとめて登録：
+      <select id="bulkPlace" style="padding:5px;border:1px solid #cfd8dc;border-radius:6px;font-family:inherit;"></select>
+      <select id="bulkShelf" style="padding:5px;border:1px solid #cfd8dc;border-radius:6px;font-family:inherit;"></select>
+      <button class="btn btn-primary btn-sm" onclick="bulkApply()">登録する</button>
+      <button class="btn btn-outline btn-sm" onclick="clearSel()">選択解除</button>
+    </div>
+    <div class="tablewrap"><div id="listBody"></div></div>
+  </div>
+
+  <!-- 買い替え -->
+  <div class="page" id="page-replace">
+    <div style="font-size:12px;color:#607D8B;margin-bottom:8px;">
+      現場から「そろそろ交換」「要交換」が登録されたタイヤです。次に買うタイヤの一覧として使えます。
+    </div>
+    <div class="tablewrap"><div id="replaceBody"></div></div>
+  </div>
+
+  <!-- 棚マップ -->
+  <div class="page" id="page-shelf">
+    <div style="font-size:12px;color:#607D8B;margin-bottom:10px;">
+      保管場所ごとの在庫数です。棚をクリックすると、その棚のタイヤ一覧を表示します。
+    </div>
+    <div class="shelfgrid" id="shelfBody"></div>
+  </div>
+
+  <!-- 廃棄履歴 -->
+  <div class="page" id="page-disposed">
+    <div style="font-size:12px;color:#607D8B;margin-bottom:8px;">
+      廃棄済みのタイヤです。現在の在庫からは除外され、履歴として残ります。
+    </div>
+    <div class="tablewrap"><div id="disposedBody"></div></div>
+  </div>
+
+  <!-- 設定 -->
+  <div class="page" id="page-setup">
+    <div class="shelfgrid">
+      <div class="sitecard">
+        <h3>保管場所（拠点）</h3>
+        <div id="siteEdit"></div>
+        <button class="btn btn-outline btn-sm" onclick="addRow('site')">＋ 拠点を追加</button>
+      </div>
+      <div class="sitecard">
+        <h3>保管棚</h3>
+        <div id="shelfEdit"></div>
+        <button class="btn btn-outline btn-sm" onclick="addRow('shelf')">＋ 棚を追加</button>
+      </div>
+    </div>
+    <div style="margin:12px 0;">
+      <button class="btn btn-primary" onclick="saveConfig()">設定を保存</button>
+    </div>
+
+    <div class="sitecard" style="margin-top:16px;">
+      <h3>タイヤセットの生成</h3>
+      <div style="font-size:12px;color:#607D8B;line-height:1.8;margin-bottom:10px;">
+        車両マスタから、1台につき夏・冬2セットのタイヤを作ります（S-001／W-001 …）。<br>
+        すでにタイヤが作られている車両は飛ばすので、車両が増えたときに何度でも実行できます。
+      </div>
+      <div class="setrow">
+        <label style="width:130px;color:#607D8B;">対象の部門</label>
+        <select id="genDept" style="flex:1;padding:7px;border:1px solid #cfd8dc;border-radius:6px;font-family:inherit;">
+          <option value="rental">レンタカー事業部</option>
+          <option value="sales">セールス部門（代車）</option>
+        </select>
+      </div>
+      <div class="setrow">
+        <label style="width:130px;color:#607D8B;">いま履いている方</label>
+        <select id="genSeason" style="flex:1;padding:7px;border:1px solid #cfd8dc;border-radius:6px;font-family:inherit;">
+          <option value="summer">夏タイヤ（装着中にする）</option>
+          <option value="winter">冬タイヤ（装着中にする）</option>
+        </select>
+      </div>
+      <button class="btn btn-success btn-sm" onclick="generate()">タイヤセットを作る</button>
+      <div id="genMsg" style="font-size:12px;margin-top:8px;"></div>
+    </div>
+  </div>
+
+</div>
+
+<!-- タイヤ詳細 -->
+<div class="modal-overlay" id="tireModal" onclick="if(event.target===this)closeModal()">
+  <div class="modal" style="width:560px;">
+    <h2 id="mdTitle">タイヤ</h2>
+    <div id="mdBody"></div>
+  </div>
+</div>
+
+<script>
+var DEPT = "rental", CFG = null, LIST = [], SEL = {}, TIMER = null;
+
+function el(id){ return document.getElementById(id); }
+function esc(s){
+  if(s === null || s === undefined) return "";
+  return String(s).replace(/[&<>"]/g, function(c){
+    return {"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;"}[c];
+  });
+}
+function q(s){ return esc(s).replace(/'/g, "&#39;"); }
+function getJSON(u){ return fetch(u).then(function(r){ return r.json(); }); }
+function postJSON(u, b, m){
+  return fetch(u, {method: m || "POST", headers: {"Content-Type": "application/json"},
+    body: JSON.stringify(b)}).then(function(r){
+      return r.json().then(function(j){ return {ok: r.ok, j: j}; });
+    });
+}
+
+function switchDept(d){
+  DEPT = d;
+  el("deptTab-rental").classList.toggle("active", d === "rental");
+  el("deptTab-sales").classList.toggle("active", d === "sales");
+  refreshAll();
+}
+
+function showPage(p){
+  var tabs = document.querySelectorAll(".tab");
+  for(var i = 0; i < tabs.length; i++) tabs[i].classList.toggle("active", tabs[i].dataset.page === p);
+  var pages = document.querySelectorAll(".page");
+  for(var k = 0; k < pages.length; k++) pages[k].classList.remove("active");
+  el("page-" + p).classList.add("active");
+  if(p === "replace") loadReplace();
+  if(p === "shelf") loadShelf();
+  if(p === "disposed") loadDisposed();
+  if(p === "setup") renderSetup();
+}
+
+/* ── 設定・統計 ───────────────────────────── */
+function loadConfig(){
+  return getJSON("/api/tires/config").then(function(c){
+    CFG = c;
+    var ph = el("fPlace"), sh = el("fShelf"), st = el("fStatus"), rp = el("fRep");
+    ph.innerHTML = '<option value="">現在地：すべて</option><option value="' + q(c.place_on) + '">装着中</option>'
+      + c.sites.map(function(s){ return '<option value="' + q(s) + '">' + esc(s) + "</option>"; }).join("")
+      + '<option value="__unset__">未設定</option>';
+    sh.innerHTML = '<option value="">棚：すべて</option>'
+      + c.shelves.map(function(s){ return '<option value="' + q(s) + '">棚' + esc(s) + "</option>"; }).join("");
+    st.innerHTML = '<option value="">状態：すべて</option>'
+      + c.statuses.map(function(s){ return '<option value="' + q(s) + '">' + esc(s) + "</option>"; }).join("");
+    rp.innerHTML = '<option value="">買い替え：すべて</option>'
+      + c.replace_flags.map(function(s){ return '<option value="' + q(s) + '">' + esc(s) + "</option>"; }).join("");
+    el("bulkPlace").innerHTML = c.sites.map(function(s){ return '<option value="' + q(s) + '">' + esc(s) + "</option>"; }).join("");
+    el("bulkShelf").innerHTML = '<option value="">棚なし</option>'
+      + c.shelves.map(function(s){ return '<option value="' + q(s) + '">棚' + esc(s) + "</option>"; }).join("");
+    el("segSummer").classList.toggle("on", c.season === "summer");
+    el("segWinter").classList.toggle("on", c.season === "winter");
+  });
+}
+
+function setSeason(s){
+  postJSON("/api/tires/config", {season: s}).then(function(){ loadConfig().then(loadStats); });
+}
+
+function loadStats(){
+  return getJSON("/api/tires/stats?dept=" + DEPT).then(function(s){
+    el("totalBadge").textContent = s.total + " セット";
+    var cards = [
+      ["装着中", s.mounted, "available"],
+      ["未設定", s.unset, ""],
+      ["そろそろ交換", s.soon, "reserved"],
+      ["要交換", s.need, "repair"],
+      ["廃棄済み", s.disposed, "inspection"]
+    ];
+    var keys = Object.keys(s.by_site);
+    for(var i = 0; i < keys.length; i++) cards.splice(1 + i, 0, [keys[i], s.by_site[keys[i]], "rented"]);
+    el("statCards").innerHTML = cards.map(function(c){
+      return '<div class="card ' + c[2] + '"><div class="card-num">' + c[1] + '</div><div class="card-label">' + esc(c[0]) + "</div></div>";
+    }).join("");
+    el("swDone").textContent = s.swap.done;
+    el("swNot").textContent = s.swap.not_done;
+    el("swUnk").textContent = s.swap.unknown;
+  });
+}
+
+/* ── 一覧 ───────────────────────────────── */
+function debouncedList(){ clearTimeout(TIMER); TIMER = setTimeout(loadList, 250); }
+
+function listURL(extra){
+  var p = ["dept=" + DEPT];
+  if(el("fSeason").value) p.push("season=" + encodeURIComponent(el("fSeason").value));
+  if(el("fPlace").value)  p.push("place=" + encodeURIComponent(el("fPlace").value));
+  if(el("fShelf").value)  p.push("shelf=" + encodeURIComponent(el("fShelf").value));
+  if(el("fStatus").value) p.push("status=" + encodeURIComponent(el("fStatus").value));
+  if(el("fRep").value)    p.push("replace=" + encodeURIComponent(el("fRep").value));
+  if(el("fQ").value.trim()) p.push("q=" + encodeURIComponent(el("fQ").value.trim()));
+  return "/api/tires?" + p.concat(extra || []).join("&");
+}
+
+function clearFilters(){
+  ["fSeason","fPlace","fShelf","fStatus","fRep"].forEach(function(i){ el(i).value = ""; });
+  el("fQ").value = "";
+  loadList();
+}
+
+function placeChip(t){
+  if(t.status === "廃棄済み") return '<span class="chip gone">廃棄済み</span>';
+  if(t.mounted) return '<span class="chip on">装着中</span>';
+  if(t.place) return '<span class="chip store">' + esc(t.location_label) + "</span>";
+  return '<span class="chip unset">未設定</span>';
+}
+function repChip(t){
+  if(t.replace_flag === "そろそろ交換") return '<span class="chip warn">そろそろ交換</span>';
+  if(t.replace_flag === "要交換") return '<span class="chip bad">要交換</span>';
+  return '<span style="color:#b0bec5;">問題なし</span>';
+}
+
+function table(rows, opts){
+  opts = opts || {};
+  if(!rows.length) return '<div class="empty">該当するタイヤはありません</div>';
+  var h = '<table class="tire"><thead><tr>';
+  if(opts.check) h += '<th style="width:26px;"><input type="checkbox" onclick="selAll(this)"></th>';
+  h += "<th>タイヤID</th><th>夏冬</th><th>車番</th><th>車種</th><th>現在地</th><th>状態</th><th>買い替え</th>";
+  if(opts.disposed) h += "<th>廃棄日</th><th>廃棄理由</th>";
+  h += "<th>備考</th><th>最終更新</th></tr></thead><tbody>";
+  rows.forEach(function(t){
+    h += '<tr onclick="openTire(\'' + q(t.tire_id) + '\')">';
+    if(opts.check) h += '<td onclick="event.stopPropagation()"><input type="checkbox" data-tid="' + q(t.tire_id)
+      + '" ' + (SEL[t.tire_id] ? "checked" : "") + ' onclick="toggleSel(this)"></td>';
+    h += '<td style="font-weight:bold;">' + esc(t.tire_id) + "</td>"
+      + '<td><span class="tw ' + t.season + '">' + esc(t.season_label) + "</span></td>"
+      + '<td style="font-weight:bold;">' + esc(t.number || "") + "</td>"
+      + "<td>" + esc(t.car_type || "") + "</td>"
+      + "<td>" + placeChip(t) + "</td>"
+      + "<td>" + esc(t.status) + "</td>"
+      + "<td>" + repChip(t) + "</td>";
+    if(opts.disposed) h += "<td>" + esc(t.disposed_date || "") + "</td><td>" + esc(t.disposed_reason || "") + "</td>";
+    h += '<td style="max-width:160px;overflow:hidden;text-overflow:ellipsis;">' + esc(t.note || "") + "</td>"
+      + '<td class="tire-sub">' + esc(t.updated_at || "") + "</td></tr>";
+  });
+  return h + "</tbody></table>";
+}
+
+function loadList(){
+  return getJSON(listURL()).then(function(rows){
+    LIST = rows;
+    el("listCount").textContent = rows.length + "件";
+    el("listBody").innerHTML = table(rows, {check: true});
+    updateBulk();
+  });
+}
+
+function loadReplace(){
+  getJSON("/api/tires?dept=" + DEPT).then(function(rows){
+    var f = rows.filter(function(t){ return t.replace_flag !== "問題なし"; });
+    f.sort(function(a, b){ return (a.replace_flag === "要交換" ? 0 : 1) - (b.replace_flag === "要交換" ? 0 : 1); });
+    el("replaceBody").innerHTML = table(f, {});
+  });
+}
+
+function loadDisposed(){
+  getJSON("/api/tires?dept=" + DEPT + "&include_disposed=1&status=" + encodeURIComponent("廃棄済み")).then(function(rows){
+    el("disposedBody").innerHTML = table(rows, {disposed: true});
+  });
+}
+
+function showNotSwapped(){
+  var other = CFG.season === "summer" ? "winter" : "summer";
+  clearFilters();
+  el("fSeason").value = other;
+  el("fPlace").value = CFG.place_on;
+  showPage("list");
+  loadList();
+}
+
+/* ── 棚マップ ─────────────────────────────── */
+function loadShelf(){
+  getJSON("/api/tires/shelfmap?dept=" + DEPT).then(function(m){
+    var max = 1;
+    Object.keys(m.counts).forEach(function(site){
+      Object.keys(m.counts[site]).forEach(function(sh){ max = Math.max(max, m.counts[site][sh]); });
+    });
+    el("shelfBody").innerHTML = m.sites.map(function(site){
+      var c = m.counts[site] || {}, tot = 0;
+      var rows = m.shelves.map(function(sh){
+        var n = c[sh] || 0; tot += n;
+        return '<div class="shelfrow" onclick="jumpShelf(\'' + q(site) + '\',\'' + q(sh) + '\')">'
+          + '<div class="nm">' + esc(sh) + "</div>"
+          + '<div class="bar"><i style="width:' + Math.round(n / max * 100) + '%"></i></div>'
+          + '<div class="n">' + n + " セット</div></div>";
+      }).join("");
+      var noShelf = c["(棚なし)"] || 0;
+      if(noShelf){
+        tot += noShelf;
+        rows += '<div class="shelfrow" onclick="jumpShelf(\'' + q(site) + "','')\">"
+          + '<div class="nm" style="font-size:12px;color:#90a4ae;">棚<br>なし</div>'
+          + '<div class="bar"><i style="width:' + Math.round(noShelf / max * 100) + '%;background:#b0bec5"></i></div>'
+          + '<div class="n">' + noShelf + " セット</div></div>";
+      }
+      return '<div class="sitecard"><h3>' + esc(site) + '　<span style="float:right;font-size:12px;color:#607D8B;">計 '
+        + tot + " セット</span></h3>" + rows + "</div>";
+    }).join("");
+  });
+}
+
+function jumpShelf(site, shelf){
+  clearFilters();
+  el("fPlace").value = site;
+  el("fShelf").value = shelf;
+  showPage("list");
+  loadList();
+}
+
+/* ── 一括登録 ─────────────────────────────── */
+function toggleSel(cb){
+  if(cb.checked) SEL[cb.dataset.tid] = 1; else delete SEL[cb.dataset.tid];
+  updateBulk();
+}
+function selAll(cb){
+  var boxes = el("listBody").querySelectorAll("input[data-tid]");
+  for(var i = 0; i < boxes.length; i++){
+    boxes[i].checked = cb.checked;
+    if(cb.checked) SEL[boxes[i].dataset.tid] = 1; else delete SEL[boxes[i].dataset.tid];
+  }
+  updateBulk();
+}
+function clearSel(){ SEL = {}; loadList(); }
+function updateBulk(){
+  var n = Object.keys(SEL).length;
+  el("bulkBar").style.display = n ? "flex" : "none";
+  el("bulkCount").textContent = n + "件";
+}
+function bulkApply(){
+  var ids = Object.keys(SEL);
+  if(!ids.length) return;
+  if(!confirm(ids.length + "件の保管場所を「" + el("bulkPlace").value
+      + (el("bulkShelf").value ? "　棚" + el("bulkShelf").value : "") + "」に登録します。よろしいですか？")) return;
+  postJSON("/api/tires/bulk-location", {tire_ids: ids, place: el("bulkPlace").value, shelf: el("bulkShelf").value})
+    .then(function(res){
+      if(!res.ok){ alert(res.j.error || "登録できませんでした"); return; }
+      SEL = {};
+      refreshAll();
+    });
+}
+
+/* ── 詳細 ───────────────────────────────── */
+function openTire(tid){
+  getJSON("/api/tires/" + encodeURIComponent(tid)).then(function(d){
+    var t = d.tire, c = d.config;
+    el("mdTitle").innerHTML = esc(t.tire_id) + ' <span class="tw ' + t.season + '">' + esc(t.season_label)
+      + "</span>　" + esc(t.car_type || "") + "　" + esc(t.number || "");
+    var opt = function(arr, cur){
+      return arr.map(function(s){ return '<option value="' + q(s) + '"' + (s === cur ? " selected" : "") + ">" + esc(s) + "</option>"; }).join("");
+    };
+    var h = '<div style="font-size:12px;color:#607D8B;margin-bottom:10px;line-height:1.8;">'
+      + esc(t.full_number || "") + '<br>QRの行き先：<code style="background:#f5f7fa;padding:1px 5px;border-radius:4px;">'
+      + location.origin + "/t/" + esc(t.tire_id) + "</code></div>";
+    h += '<div class="fgrid">'
+      + '<label>現在地</label><select id="edPlace"><option value="">未設定</option><option value="' + q(c.place_on) + '"'
+      + (t.place === c.place_on ? " selected" : "") + ">装着中</option>" + opt(c.sites, t.place) + "</select>"
+      + '<label>保管棚</label><select id="edShelf"><option value="">棚なし</option>' + opt(c.shelves, t.shelf) + "</select>"
+      + '<label>タイヤ状態</label><select id="edStatus">' + opt(c.statuses, t.status) + "</select>"
+      + '<label>買い替え</label><select id="edRep">' + opt(c.replace_flags, t.replace_flag) + "</select>"
+      + '<label>廃棄日</label><input type="date" id="edDate" value="' + esc(t.disposed_date || "") + '">'
+      + '<label>廃棄理由</label><select id="edReason"><option value="">-</option>' + opt(c.dispose_reasons, t.disposed_reason) + "</select>"
+      + '<label>備考</label><textarea id="edNote" rows="2">' + esc(t.note || "") + "</textarea>"
+      + "</div>";
+    h += '<div class="modal-actions"><button class="btn btn-outline" onclick="closeModal()">閉じる</button>'
+      + '<button class="btn btn-primary" onclick="saveTire(\'' + q(t.tire_id) + '\')">保存する</button></div>';
+    h += '<h3 style="font-size:13px;color:#1a3a5c;margin:16px 0 4px;">作業履歴</h3>';
+    if(!d.events.length) h += '<div style="font-size:12px;color:#b0bec5;">まだ登録がありません</div>';
+    d.events.forEach(function(e){
+      var bits = [e.place, e.shelf ? "棚" + e.shelf : "", e.status, e.replace_flag, e.disposed_reason]
+        .filter(function(x){ return x; }).join(" ／ ");
+      h += '<div class="hist"><b>' + esc(e.action) + "</b>　" + esc(bits)
+        + (e.staff ? '　<span style="color:#607D8B;">' + esc(e.staff) + "</span>" : "")
+        + (e.note ? '<br><span style="color:#78909c;">' + esc(e.note) + "</span>" : "")
+        + '<div class="when">' + esc(e.created_at) + "</div></div>";
+    });
+    el("mdBody").innerHTML = h;
+    el("tireModal").classList.add("open");
+  });
+}
+function closeModal(){ el("tireModal").classList.remove("open"); }
+function saveTire(tid){
+  postJSON("/api/tires/" + encodeURIComponent(tid), {
+    place: el("edPlace").value, shelf: el("edShelf").value, status: el("edStatus").value,
+    replace_flag: el("edRep").value, disposed_date: el("edDate").value,
+    disposed_reason: el("edReason").value, note: el("edNote").value
+  }, "PUT").then(function(res){
+    if(!res.ok){ alert(res.j.error || "保存できませんでした"); return; }
+    closeModal();
+    refreshAll();
+  });
+}
+
+/* ── 設定画面 ─────────────────────────────── */
+function renderSetup(){
+  el("siteEdit").innerHTML = CFG.sites.map(function(s, i){
+    return '<div class="setrow"><input value="' + esc(s) + '" data-site="' + i + '">'
+      + '<button class="btn btn-outline btn-sm" onclick="delRow(this)">削除</button></div>';
+  }).join("");
+  el("shelfEdit").innerHTML = CFG.shelves.map(function(s, i){
+    return '<div class="setrow"><input value="' + esc(s) + '" data-shelf="' + i + '">'
+      + '<button class="btn btn-outline btn-sm" onclick="delRow(this)">削除</button></div>';
+  }).join("");
+}
+function addRow(kind){
+  var box = el(kind === "site" ? "siteEdit" : "shelfEdit");
+  var d = document.createElement("div");
+  d.className = "setrow";
+  d.innerHTML = '<input value="" data-' + kind + '="new"><button class="btn btn-outline btn-sm" onclick="delRow(this)">削除</button>';
+  box.appendChild(d);
+  d.querySelector("input").focus();
+}
+function delRow(b){ b.parentNode.parentNode.removeChild(b.parentNode); }
+function saveConfig(){
+  var vals = function(box){
+    var ins = el(box).querySelectorAll("input"), out = [];
+    for(var i = 0; i < ins.length; i++) if(ins[i].value.trim()) out.push(ins[i].value.trim());
+    return out;
+  };
+  postJSON("/api/tires/config", {sites: vals("siteEdit"), shelves: vals("shelfEdit")}).then(function(res){
+    if(!res.ok){ alert(res.j.error || "保存できませんでした"); return; }
+    loadConfig().then(function(){ renderSetup(); loadList(); alert("設定を保存しました"); });
+  });
+}
+function generate(){
+  var dept = el("genDept").value;
+  if(!confirm("車両マスタからタイヤセットを作ります。よろしいですか？")) return;
+  postJSON("/api/tires/generate", {dept: dept, mounted_season: el("genSeason").value}).then(function(res){
+    if(!res.ok){ el("genMsg").innerHTML = '<span style="color:#C62828;">' + esc(res.j.error || "失敗しました") + "</span>"; return; }
+    el("genMsg").innerHTML = '<span style="color:#2E7D32;">タイヤ ' + res.j.created + " 本分を作成しました（既存 "
+      + res.j.skipped_vehicles + " 台はそのまま）</span>";
+    refreshAll();
+  });
+}
+
+/* ── 初期化 ───────────────────────────────── */
+function refreshAll(){
+  loadStats();
+  loadList();
+  var act = document.querySelector(".tab.active");
+  var p = act ? act.dataset.page : "list";
+  if(p === "replace") loadReplace();
+  if(p === "shelf") loadShelf();
+  if(p === "disposed") loadDisposed();
+}
+loadConfig().then(refreshAll);
+</script>
+</body>
+</html>
