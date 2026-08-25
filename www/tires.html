@@ -51,6 +51,53 @@ table.tire tbody tr:hover{background:#f0f6fb;cursor:pointer}
 .setrow{display:flex;gap:8px;align-items:center;margin-bottom:8px;font-size:13px}
 .setrow input{flex:1;padding:7px 8px;border:1px solid #cfd8dc;border-radius:6px;font-family:inherit;font-size:13px}
 .empty{padding:40px 20px;text-align:center;color:#90a4ae;font-size:13px;background:#fff;border-radius:10px}
+
+/* ── コンパクト表示（車両管理のカレンダー画面に合わせて1行に収める） ── */
+header{padding:7px 10px}
+header h1{font-size:13px}
+header .subtitle{font-size:10px;margin-top:0}
+.total-badge{padding:2px 9px;font-size:11px}
+.btn-hdr{padding:4px 7px;font-size:11px}
+.dept-tab{padding:7px 8px;font-size:11px}
+.content{padding:8px}
+
+.tabs{padding:0 3px;flex-wrap:nowrap;overflow-x:auto}
+.tabs::-webkit-scrollbar{display:none}
+.tab{padding:7px 6px;font-size:11px;white-space:nowrap;flex:1 1 0;text-align:center}
+
+.summary-cards{flex-wrap:nowrap;gap:3px;margin-bottom:6px}
+.card{min-width:0;flex:1 1 0;padding:4px 3px;border-radius:7px;border-left-width:3px}
+.card-num{font-size:14px}
+.card-label{font-size:8px;margin-top:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+
+.swapbar{flex-wrap:nowrap;gap:4px;padding:6px;margin-bottom:6px;overflow-x:auto}
+.swapbar>*{flex:0 0 auto}
+.swapbar .seg button{padding:3px 10px;font-size:11px}
+.swapbar .kpi{font-size:11px;white-space:nowrap}
+.swapbar .kpi b{font-size:15px;margin:0 2px}
+.swapbar .btn-sm{padding:3px 8px;font-size:11px;white-space:nowrap}
+
+.filter-bar{flex-wrap:nowrap;overflow-x:auto}
+.filter-bar select,.filter-bar input{padding:3px 4px;font-size:11px;min-width:0}
+.filter-bar select{flex:1 1 0}
+.filter-bar input[type=text]{flex:1 1 70px}
+.filter-bar .btn-sm{padding:3px 7px;font-size:11px;white-space:nowrap;flex:0 0 auto}
+#listCount{flex:0 0 auto;font-size:10px}
+
+table.tire{font-size:10px}
+table.tire th{padding:4px 3px;font-size:9px}
+table.tire td{padding:3px 4px}
+.tw{padding:0 6px;font-size:9px}
+.chip{padding:0 6px;font-size:9px}
+.bulkbar{padding:6px 8px;gap:6px;font-size:11px}
+.bulkbar select{font-size:11px;padding:3px 4px}
+.tablewrap{max-height:calc(100vh - 300px)}
+
+/* 狭い画面では備考・最終更新を隠す（内容は行をタップした詳細で見られる） */
+@media(max-width:700px){
+  .tablewrap{max-height:none}
+  table.tire .c-note,table.tire .c-upd{display:none}
+}
 </style>
 </head>
 <body>
@@ -73,11 +120,11 @@ table.tire tbody tr:hover{background:#f0f6fb;cursor:pointer}
 </div>
 
 <div class="tabs">
-  <div class="tab active" data-page="list"    onclick="showPage('list')">📋 一覧</div>
-  <div class="tab" data-page="replace" onclick="showPage('replace')">🔧 買い替え</div>
-  <div class="tab" data-page="shelf"   onclick="showPage('shelf')">🗄 棚マップ</div>
-  <div class="tab" data-page="disposed" onclick="showPage('disposed')">🗑 廃棄履歴</div>
-  <div class="tab" data-page="setup"   onclick="showPage('setup')">⚙️ 設定</div>
+  <div class="tab active" data-page="list"    onclick="showPage('list')">📋一覧</div>
+  <div class="tab" data-page="replace"  onclick="showPage('replace')">🔧買替</div>
+  <div class="tab" data-page="shelf"    onclick="showPage('shelf')">🗄棚ﾏｯﾌﾟ</div>
+  <div class="tab" data-page="disposed" onclick="showPage('disposed')">🗑廃棄</div>
+  <div class="tab" data-page="setup"    onclick="showPage('setup')">⚙️設定</div>
 </div>
 
 <div class="content">
@@ -85,28 +132,30 @@ table.tire tbody tr:hover{background:#f0f6fb;cursor:pointer}
   <div class="summary-cards" id="statCards"></div>
 
   <div class="swapbar">
-    <span style="font-size:12px;color:#607D8B;font-weight:bold;">今シーズン</span>
+    <span style="font-size:11px;color:#607D8B;font-weight:bold;">季節</span>
     <span class="seg">
       <button id="segSummer" onclick="setSeason('summer')">夏</button>
       <button id="segWinter" onclick="setSeason('winter')">冬</button>
     </span>
-    <span class="kpi">交換済 <b style="color:#2E7D32" id="swDone">-</b>台</span>
-    <span class="kpi">未交換 <b style="color:#C62828" id="swNot">-</b>台</span>
-    <span class="kpi">不明 <b style="color:#90a4ae" id="swUnk">-</b>台</span>
-    <button class="btn btn-outline btn-sm" onclick="showNotSwapped()">未交換の車両を見る</button>
+    <span class="kpi">交換済<b style="color:#2E7D32" id="swDone">-</b></span>
+    <span class="kpi">未交換<b style="color:#C62828" id="swNot">-</b></span>
+    <span class="kpi">不明<b style="color:#90a4ae" id="swUnk">-</b></span>
+    <button class="btn btn-outline btn-sm" onclick="showNotSwapped()">未交換一覧</button>
   </div>
 
   <!-- 一覧 -->
   <div class="page active" id="page-list">
-    <div class="filter-bar" style="padding:8px 10px;gap:6px;border-radius:10px;margin-bottom:8px;">
-      <select id="fSeason" onchange="loadList()"><option value="">夏冬：すべて</option><option value="summer">夏</option><option value="winter">冬</option></select>
-      <select id="fPlace" onchange="loadList()"><option value="">現在地：すべて</option></select>
-      <select id="fShelf" onchange="loadList()"><option value="">棚：すべて</option></select>
-      <select id="fStatus" onchange="loadList()"><option value="">状態：すべて</option></select>
-      <select id="fRep" onchange="loadList()"><option value="">買い替え：すべて</option></select>
-      <input type="text" id="fQ" placeholder="タイヤID・車番・車種…" oninput="debouncedList()">
+    <div class="filter-bar" style="padding:5px 6px;gap:4px;border-radius:10px;margin-bottom:6px;">
+      <select id="fSeason" onchange="loadList()"><option value="">夏冬</option><option value="summer">夏</option><option value="winter">冬</option></select>
+      <select id="fPlace" onchange="loadList()"><option value="">場所</option></select>
+      <select id="fShelf" onchange="loadList()"><option value="">棚</option></select>
+      <select id="fStatus" onchange="loadList()"><option value="">状態</option></select>
+      <select id="fRep" onchange="loadList()"><option value="">買替</option></select>
       <button class="btn btn-outline btn-sm" onclick="clearFilters()">ｸﾘｱ</button>
-      <span id="listCount" style="font-size:11px;color:#888;"></span>
+    </div>
+    <div class="filter-bar filter-bar2" style="padding:0 6px 5px;gap:5px;border-radius:10px;margin-bottom:6px;border:none;">
+      <input type="text" id="fQ" placeholder="タイヤID・車番・車種で検索" oninput="debouncedList()">
+      <span id="listCount" style="color:#888;"></span>
     </div>
     <div class="bulkbar" id="bulkBar" style="display:none;">
       <b id="bulkCount">0件</b> 選択中 ／ 保管場所をまとめて登録：
@@ -238,14 +287,14 @@ function loadConfig(){
   return getJSON("/api/tires/config").then(function(c){
     CFG = c;
     var ph = el("fPlace"), sh = el("fShelf"), st = el("fStatus"), rp = el("fRep");
-    ph.innerHTML = '<option value="">現在地：すべて</option><option value="' + q(c.place_on) + '">装着中</option>'
+    ph.innerHTML = '<option value="">場所</option><option value="' + q(c.place_on) + '">装着中</option>'
       + c.sites.map(function(s){ return '<option value="' + q(s) + '">' + esc(s) + "</option>"; }).join("")
       + '<option value="__unset__">未設定</option>';
-    sh.innerHTML = '<option value="">棚：すべて</option>'
+    sh.innerHTML = '<option value="">棚</option>'
       + c.shelves.map(function(s){ return '<option value="' + q(s) + '">棚' + esc(s) + "</option>"; }).join("");
-    st.innerHTML = '<option value="">状態：すべて</option>'
+    st.innerHTML = '<option value="">状態</option>'
       + c.statuses.map(function(s){ return '<option value="' + q(s) + '">' + esc(s) + "</option>"; }).join("");
-    rp.innerHTML = '<option value="">買い替え：すべて</option>'
+    rp.innerHTML = '<option value="">買替</option>'
       + c.replace_flags.map(function(s){ return '<option value="' + q(s) + '">' + esc(s) + "</option>"; }).join("");
     el("bulkPlace").innerHTML = c.sites.map(function(s){ return '<option value="' + q(s) + '">' + esc(s) + "</option>"; }).join("");
     el("bulkShelf").innerHTML = '<option value="">棚なし</option>'
@@ -265,9 +314,9 @@ function loadStats(){
     var cards = [
       ["装着中", s.mounted, "available"],
       ["未設定", s.unset, ""],
-      ["そろそろ交換", s.soon, "reserved"],
+      ["そろそろ", s.soon, "reserved"],
       ["要交換", s.need, "repair"],
-      ["廃棄済み", s.disposed, "inspection"]
+      ["廃棄済", s.disposed, "inspection"]
     ];
     var keys = Object.keys(s.by_site);
     for(var i = 0; i < keys.length; i++) cards.splice(1 + i, 0, [keys[i], s.by_site[keys[i]], "rented"]);
@@ -306,6 +355,12 @@ function placeChip(t){
   if(t.place) return '<span class="chip store">' + esc(t.location_label) + "</span>";
   return '<span class="chip unset">未設定</span>';
 }
+function shortDate(s){
+  // "2026-08-24 02:31" → "08/24 02:31"（表の幅を詰めるため年を省く）
+  if(!s) return "";
+  var m = String(s).match(/^\d{4}-(\d{2})-(\d{2})\s+(\d{2}:\d{2})/);
+  return m ? m[1] + "/" + m[2] + " " + m[3] : s;
+}
 function repChip(t){
   if(t.replace_flag === "そろそろ交換") return '<span class="chip warn">そろそろ交換</span>';
   if(t.replace_flag === "要交換") return '<span class="chip bad">要交換</span>';
@@ -316,10 +371,10 @@ function table(rows, opts){
   opts = opts || {};
   if(!rows.length) return '<div class="empty">該当するタイヤはありません</div>';
   var h = '<table class="tire"><thead><tr>';
-  if(opts.check) h += '<th style="width:26px;"><input type="checkbox" onclick="selAll(this)"></th>';
-  h += "<th>タイヤID</th><th>夏冬</th><th>車番</th><th>車種</th><th>現在地</th><th>状態</th><th>買い替え</th>";
+  if(opts.check) h += '<th style="width:20px;"><input type="checkbox" onclick="selAll(this)"></th>';
+  h += "<th>ﾀｲﾔID</th><th>夏冬</th><th>車番</th><th>車種</th><th>現在地</th><th>状態</th><th>買替</th>";
   if(opts.disposed) h += "<th>廃棄日</th><th>廃棄理由</th>";
-  h += "<th>備考</th><th>最終更新</th></tr></thead><tbody>";
+  h += '<th class="c-note">備考</th><th class="c-upd">最終更新</th></tr></thead><tbody>';
   rows.forEach(function(t){
     h += '<tr onclick="openTire(\'' + q(t.tire_id) + '\')">';
     if(opts.check) h += '<td onclick="event.stopPropagation()"><input type="checkbox" data-tid="' + q(t.tire_id)
@@ -332,8 +387,8 @@ function table(rows, opts){
       + "<td>" + esc(t.status) + "</td>"
       + "<td>" + repChip(t) + "</td>";
     if(opts.disposed) h += "<td>" + esc(t.disposed_date || "") + "</td><td>" + esc(t.disposed_reason || "") + "</td>";
-    h += '<td style="max-width:160px;overflow:hidden;text-overflow:ellipsis;">' + esc(t.note || "") + "</td>"
-      + '<td class="tire-sub">' + esc(t.updated_at || "") + "</td></tr>";
+    h += '<td class="c-note" style="max-width:110px;overflow:hidden;text-overflow:ellipsis;">' + esc(t.note || "") + "</td>"
+      + '<td class="c-upd tire-sub">' + esc(shortDate(t.updated_at)) + "</td></tr>";
   });
   return h + "</tbody></table>";
 }
