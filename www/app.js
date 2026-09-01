@@ -729,6 +729,7 @@ function renderDetail(vehicleId) {
         <div>ナンバー: <strong>${v.full_number || v.number}</strong></div>
         <div>年式: ${v.year || '不明'}</div>
         <div>車検満了: ${v.inspection_date ? fmtDateFull(v.inspection_date) : '未登録'}</div>
+        ${v.notes ? `<div style="color:#C0392B;">備考: ${v.notes}</div>` : ''}
     `;
 
     const vEvents = events.filter(e => String(e.vehicle_id) === String(vehicleId))

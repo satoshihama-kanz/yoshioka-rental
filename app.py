@@ -927,6 +927,8 @@ def init_db():
         "ALTER TABLE clients ADD COLUMN reading TEXT DEFAULT ''",
         # 部門（事業部）。既存データはすべてレンタカー事業部として扱う
         "ALTER TABLE vehicles ADD COLUMN department TEXT DEFAULT 'rental'",
+        # 車両ごとの備考（管理表の備考欄をそのまま持たせる）
+        "ALTER TABLE vehicles ADD COLUMN notes TEXT DEFAULT ''",
         "ALTER TABLE staff ADD COLUMN department TEXT DEFAULT 'rental'",
     ]:
         try:
@@ -2704,6 +2706,103 @@ def admin_import_status():
     return jsonify({'inserted': inserted, 'not_found_count': len(not_found),
                     'not_found': not_found[:20]})
 
+# ── 管理表との同期（管理者専用） ────────────────────────────
+@app.route('/api/admin/sync-master', methods=['POST'])
+def admin_sync_master():
+    """管理表を正として車両マスタを合わせる。
+
+    payload: {dept, items:[{match_id|full_number, number, car_type, year,
+                            full_number, car_category, inspection_date,
+                            notes, studless, region}], delete_ids:[...]}
+    match_id があれば更新、なければ新規登録。delete_ids は車両ごと削除する
+    （紐づく状態履歴も消える）。region は空欄なら既存値を残す。
+    """
+    key = request.headers.get('X-Admin-Key','') or (request.get_json(silent=True) or {}).get('key','')
+    if key != ADMIN_PASS:
+        return jsonify({'error': 'Unauthorized'}), 401
+    body  = request.get_json() or {}
+    dept  = norm_dept(body.get('dept'))
+    items = body.get('items') or []
+    dels  = body.get('delete_ids') or []
+
+    conn = get_db(); c = conn.cursor()
+    updated = inserted = 0
+    for it in items:
+        vals = (it.get('number',''), it.get('car_type',''), it.get('year',''),
+                it.get('full_number',''), it.get('inspection_date') or '',
+                it.get('car_category',''), it.get('notes',''),
+                1 if it.get('studless') else 0)
+        mid = it.get('match_id')
+        if mid:
+            c.execute('''UPDATE vehicles SET number=?,car_type=?,year=?,full_number=?,
+                         inspection_date=?,car_category=?,notes=?,studless=? WHERE id=?''',
+                      vals + (mid,))
+            if it.get('region'):
+                c.execute('UPDATE vehicles SET region=? WHERE id=?', (it['region'], mid))
+            updated += 1
+        else:
+            c.execute('''INSERT INTO vehicles
+                         (number,car_type,year,full_number,inspection_date,car_category,
+                          notes,studless,region,is_rental_other,department)
+                         VALUES (?,?,?,?,?,?,?,?,?,0,?)''',
+                      vals + (it.get('region',''), dept))
+            inserted += 1
+
+    deleted = 0
+    for vid in dels:
+        c.execute('DELETE FROM events WHERE vehicle_id=?', (vid,))
+        c.execute('DELETE FROM vehicles WHERE id=?', (vid,))
+        deleted += 1
+
+    conn.commit()
+    total = c.execute('SELECT COUNT(*) FROM vehicles WHERE department=?', (dept,)).fetchone()[0]
+    conn.close()
+    return jsonify({'updated': updated, 'inserted': inserted,
+                    'deleted': deleted, 'total_now': total})
+
+@app.route('/api/admin/sync-status', methods=['POST'])
+def admin_sync_status():
+    """指定日の状態を管理表どおりに置き換える。
+
+    payload: {dept, date, reset, items:[{number|full_number, status, staff}]}
+    reset=True でその部門の既存イベントを全消去してから入れ直す。
+    """
+    key = request.headers.get('X-Admin-Key','') or (request.get_json(silent=True) or {}).get('key','')
+    if key != ADMIN_PASS:
+        return jsonify({'error': 'Unauthorized'}), 401
+    body  = request.get_json() or {}
+    dept  = norm_dept(body.get('dept'))
+    d     = body.get('date') or today_jst()
+    items = body.get('items') or []
+
+    conn = get_db(); c = conn.cursor()
+    if body.get('reset'):
+        c.execute('''DELETE FROM events WHERE vehicle_id IN
+                     (SELECT id FROM vehicles WHERE department=?)''', (dept,))
+    now = datetime.now(JST).strftime('%Y-%m-%d %H:%M:%S')
+    inserted, not_found = 0, []
+    for it in items:
+        row = None
+        if it.get('full_number'):
+            row = c.execute(
+                '''SELECT id FROM vehicles
+                   WHERE REPLACE(REPLACE(full_number," ",""),"　","")=? AND department=?''',
+                (str(it['full_number']).replace(' ',''), dept)).fetchone()
+        if not row and it.get('number'):
+            row = c.execute('SELECT id FROM vehicles WHERE number=? AND department=?',
+                            (str(it['number']), dept)).fetchone()
+        if not row:
+            not_found.append(it.get('full_number') or it.get('number')); continue
+        c.execute('''INSERT INTO events
+                     (vehicle_id,status,start_date,end_date,staff,client,category,notes,created_at,location)
+                     VALUES (?,?,?,?,?,?,?,?,?,?)''',
+                  (row[0], it['status'], d, None, it.get('staff',''), '', '',
+                   it.get('notes',''), now, ''))
+        inserted += 1
+    conn.commit(); conn.close()
+    return jsonify({'inserted': inserted, 'not_found_count': len(not_found),
+                    'not_found': not_found[:20]})
+
 # ── エクセル現況の一括取込（管理者専用） ────────────────────
 @app.route('/api/admin/import-grid', methods=['POST'])
 def admin_import_grid():
@@ -2823,9 +2922,9 @@ def master_vehicles_post():
     # 同じ4桁車番でも分類番号違いの車両が存在しうるため、重複は許容する
     dept = norm_dept(d.get('department'))
     conn = get_db()
-    cur = conn.execute('INSERT INTO vehicles (number, car_type, region, studless, is_rental_other, car_category, department) VALUES (?,?,?,?,?,?,?)',
+    cur = conn.execute('INSERT INTO vehicles (number, car_type, region, studless, is_rental_other, car_category, department, notes) VALUES (?,?,?,?,?,?,?,?)',
                        (number, d.get('car_type',''), d.get('region',''), 0, 0,
-                        d.get('car_category',''), dept))
+                        d.get('car_category',''), dept, d.get('notes','')))
     conn.commit()
     row = dict(conn.execute('SELECT * FROM vehicles WHERE id=?', (cur.lastrowid,)).fetchone())
     conn.close()
@@ -2838,9 +2937,10 @@ def master_vehicles_put(vid):
     conn = get_db()
     cur_row = conn.execute('SELECT department FROM vehicles WHERE id=?', (vid,)).fetchone()
     dept = norm_dept(d.get('department'), norm_dept(cur_row['department'] if cur_row else None))
-    conn.execute('UPDATE vehicles SET number=?,car_type=?,region=?,car_category=?,studless=?,is_rental_other=?,department=? WHERE id=?',
+    conn.execute('UPDATE vehicles SET number=?,car_type=?,region=?,car_category=?,studless=?,is_rental_other=?,department=?,notes=? WHERE id=?',
                  (d.get('number',''), d.get('car_type',''), d.get('region',''), d.get('car_category',''),
-                  1 if d.get('studless') else 0, 1 if d.get('is_rental_other') else 0, dept, vid))
+                  1 if d.get('studless') else 0, 1 if d.get('is_rental_other') else 0, dept,
+                  d.get('notes',''), vid))
     conn.commit()
     row = dict(conn.execute('SELECT * FROM vehicles WHERE id=?', (vid,)).fetchone())
     conn.close()

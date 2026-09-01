@@ -32,6 +32,8 @@ table{width:100%;border-collapse:collapse;background:white;border-radius:8px;ove
 th{background:#1a3a5c;color:white;padding:5px 4px;text-align:left;font-size:10px;line-height:1.25;word-break:keep-all}
 td{padding:5px 4px;border-bottom:1px solid #f0f0f0;vertical-align:middle;font-size:11px;line-height:1.3;word-break:break-all}
 .col-ops{width:74px}
+.vnote{color:#777;font-size:10px}
+.tight{white-space:nowrap}
 .ops{display:flex;gap:3px;flex-wrap:nowrap}
 .ops .btn{padding:2px 5px;font-size:10px;white-space:nowrap;flex:0 0 auto}
 tr:hover td{background:#f8fafc}
@@ -98,7 +100,7 @@ body.dept-sales th{background:#4a3410}
     <span class="count" id="vCount"></span>
   </div>
   <table>
-    <thead><tr><th>車番</th><th>車種</th><th>地域</th><th>区分</th><th>冬ﾀｲﾔ</th><th>他社借り</th><th>操作</th></tr></thead>
+    <thead><tr><th>車番</th><th>車種</th><th>地域</th><th>区分</th><th>車検</th><th>備考</th><th>冬ﾀｲﾔ</th><th>操作</th></tr></thead>
     <tbody id="vTable"></tbody>
   </table>
 </div>
@@ -144,6 +146,8 @@ body.dept-sales th{background:#4a3410}
     <div class="form-row"><label>車種</label><input type="text" id="vCarType" placeholder="例: ADバン"></div>
     <div class="form-row"><label>地域</label><input type="text" id="vRegion" placeholder="例: 京都"></div>
     <div class="form-row"><label>区分</label><input type="text" id="vCarCategory" placeholder="例: 軽自動車"></div>
+    <div class="form-row"><label>車検満了日</label><input type="date" id="vInspection"></div>
+    <div class="form-row"><label>備考</label><input type="text" id="vNotes" placeholder="例: 滋賀ナンバー変更予定"></div>
     <div class="form-row">
       <label><input type="checkbox" id="vStudless"> スタッドレスタイヤ装着</label>
     </div>
@@ -297,13 +301,22 @@ function showTab(name) {
 }
 
 // ── 車両 ──
+function esc(t){return String(t).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));}
+function fmtInsp(d){
+  if(!d) return '';
+  const x=new Date(d); if(isNaN(x)) return '';
+  const soon=(x-new Date())/86400000 <= 60;
+  const t=`${x.getFullYear()%100}/${x.getMonth()+1}/${x.getDate()}`;
+  return soon ? `<span style="color:#E53935;font-weight:bold">${t}</span>` : t;
+}
+
 function renderVehicles() {
   const q = document.getElementById('vSearch').value.toLowerCase();
   const filtered = vehicles.filter(v => !q || v.number.includes(q) || (v.car_type||'').toLowerCase().includes(q));
   document.getElementById('vCount').textContent = `${filtered.length} 件（${DEPT_LABELS[currentDept]}）`;
   if (filtered.length === 0) {
     document.getElementById('vTable').innerHTML =
-      `<tr><td colspan="7" style="text-align:center;color:#999;padding:24px">
+      `<tr><td colspan="8" style="text-align:center;color:#999;padding:24px">
          ${DEPT_LABELS[currentDept]}の車両はまだ登録されていません
        </td></tr>`;
     return;
@@ -314,8 +327,9 @@ function renderVehicles() {
       <td>${v.car_type||''}</td>
       <td>${v.region||''}</td>
       <td>${v.car_category||''}</td>
+      <td class="tight">${fmtInsp(v.inspection_date)}</td>
+      <td class="vnote">${esc(v.notes||'')}</td>
       <td>${v.studless ? '<span class="badge badge-ok">あり</span>' : ''}</td>
-      <td>${v.is_rental_other ? '<span class="badge badge-ng">他社借り</span>' : ''}</td>
       <td class="col-ops"><div class="ops">
         <button class="btn btn-edit" onclick="openVehicleModal(${v.id})">編集</button>
         <button class="btn btn-danger" onclick="deleteVehicle(${v.id},'${v.number}')">削除</button>
@@ -332,6 +346,8 @@ function openVehicleModal(id) {
   document.getElementById('vCarType').value = v.car_type || '';
   document.getElementById('vRegion').value = v.region || '';
   document.getElementById('vCarCategory').value = v.car_category || '';
+  document.getElementById('vInspection').value = v.inspection_date || '';
+  document.getElementById('vNotes').value = v.notes || '';
   document.getElementById('vStudless').checked = !!v.studless;
   document.getElementById('vRentalOther').checked = !!v.is_rental_other;
   document.getElementById('vAlert').className = 'alert';
@@ -344,6 +360,8 @@ async function saveVehicle() {
     car_type: document.getElementById('vCarType').value.trim(),
     region: document.getElementById('vRegion').value.trim(),
     car_category: document.getElementById('vCarCategory').value.trim(),
+    inspection_date: document.getElementById('vInspection').value || '',
+    notes: document.getElementById('vNotes').value.trim(),
     studless: document.getElementById('vStudless').checked,
     is_rental_other: document.getElementById('vRentalOther').checked,
   };
