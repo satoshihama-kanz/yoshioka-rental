@@ -2444,10 +2444,17 @@ def api_liff_submit():
     action_map = {
         '配車':'貸出中','予約':'予約済','修理':'修理中',
         '返却':'在庫','車検':'車検中','点検':'点検中',
+        # 返却と同時に次の予約を押さえる（1回の送信で2件登録する）
+        '返却予約':'在庫',
     }
-    status = action_map.get(d.get('action',''))
+    action = d.get('action','')
+    status = action_map.get(action)
     if not status:
         return jsonify({'error': 'Invalid action'}), 400
+
+    with_reservation = action == '返却予約'
+    if with_reservation and not (d.get('resv_start_date') or '').strip():
+        return jsonify({'error': '予約の開始日を入力してください'}), 400
 
     conn = get_db()
     v    = conn.execute('SELECT * FROM vehicles WHERE id=?', (d.get('vehicle_id'),)).fetchone()
@@ -2468,6 +2475,9 @@ def api_liff_submit():
         'washed':          d.get('washed', False),
         'interior_cleaned':d.get('interior_cleaned', False),
     }
+    if with_reservation:
+        # 返却は在庫として記録し、担当・顧客は後続の予約側に持たせる
+        state.update({'staff': '', 'client': '', 'category': '', 'end_date': None})
 
     # 車両マスタの更新（他社借り・スタッドレス・地域）
     update_fields = []
@@ -2498,6 +2508,23 @@ def api_liff_submit():
         conn2.close()
 
     msg = register_event(v, status, state)
+
+    if with_reservation:
+        resv = {
+            'start_date':      d.get('resv_start_date'),
+            'end_date':        d.get('resv_end_date') or None,
+            'staff':           d.get('staff',''),
+            'client':          d.get('client',''),
+            'client_contact':  d.get('client_contact',''),
+            'category':        d.get('category',''),
+            'mileage':         '',
+            'notes':           d.get('notes',''),
+            'location':        '',
+            'washed':          False,
+            'interior_cleaned':False,
+        }
+        sep = chr(10) * 2 + '─' * 10 + chr(10)
+        msg = msg + sep + register_event(v, '予約済', resv)
 
     # グループLINEに通知（部門ごとの通知先。セールス部門は既定で送信しない）
     dept      = norm_dept(v.get('department'))
