@@ -12,6 +12,8 @@ body{font-family:'Meiryo',sans-serif;background:#f0f2f5;min-height:100vh}
 .container{max-width:520px;margin:0 auto;padding:12px 12px 80px}
 .section{background:white;border-radius:10px;padding:14px;margin-bottom:10px;box-shadow:0 1px 4px rgba(0,0,0,0.08)}
 .section-num{display:inline-block;background:#1a3a5c;color:white;border-radius:50%;width:22px;height:22px;text-align:center;line-height:22px;font-size:12px;font-weight:bold;margin-right:6px}
+.vehicle-note{margin-top:6px;padding:7px 10px;background:#FDECEA;border-left:3px solid #C0392B;
+  border-radius:4px;font-size:13px;color:#8B2A1F;line-height:1.6;font-weight:bold}
 .section-title{font-size:13px;font-weight:bold;color:#333;margin-bottom:10px;display:flex;align-items:center}
 label{display:block;font-size:12px;color:#888;margin-bottom:4px;font-weight:bold}
 input[type=text],input[type=number],input[type=date],select,textarea{
@@ -77,6 +79,7 @@ body.dept-sales .action-btn.selected{border-color:#4a3410;background:#4a3410}
       <label class="required">車番（4桁）</label>
       <input type="number" id="vehicleNumber" placeholder="例: 6401" oninput="lookupVehicle()" inputmode="numeric" pattern="[0-9]*">
       <div class="vehicle-info empty" id="vehicleInfo">番号を入力してください</div>
+      <div id="vehicleNote" class="vehicle-note hide"></div>
       <div class="vehicle-select-wrap hide" id="vehicleSelectWrap">
         <label style="margin-top:8px">同じ車番の車両が複数あります。選択してください：</label>
         <select id="vehicleSelect" onchange="selectVehicle()">
@@ -396,6 +399,7 @@ function lookupVehicle() {
         info.textContent = `車番 ${num} は${DEPT_LABELS[currentDept]}に登録されていません`;
         info.className = 'vehicle-info error';
         selWrap.classList.add('hide');
+        showVehicleNote(null);
       } else if (data.length === 1) {
         selectedVehicleId = data[0].id;
         info.textContent  = `${data[0].car_type}  ${data[0].full_number || ''}`;
@@ -431,6 +435,20 @@ function lookupVehicle() {
 function applyVehicleFlags(v) {
   document.getElementById('studless').checked       = !!v.studless;
   document.getElementById('isRentalOther').checked  = !!v.is_rental_other;
+  showVehicleNote(v);
+}
+
+// 車両マスタに登録された備考（事故歴・整備予定など）を車番の下に出す
+function showVehicleNote(v) {
+  const el = document.getElementById('vehicleNote');
+  const note = ((v && v.notes) || '').trim();
+  if (note) {
+    el.textContent = '📌 ' + note;
+    el.classList.remove('hide');
+  } else {
+    el.textContent = '';
+    el.classList.add('hide');
+  }
 }
 
 function selectVehicle() {
@@ -593,6 +611,7 @@ function resetForm() {
   document.getElementById('vehicleNumber').value = '';
   document.getElementById('vehicleInfo').textContent = '番号を入力してください';
   document.getElementById('vehicleInfo').className = 'vehicle-info empty';
+  showVehicleNote(null);
   document.getElementById('vehicleSelectWrap').classList.add('hide');
   document.getElementById('client').value  = '';
   document.getElementById('category').value = '';
