@@ -929,6 +929,8 @@ def init_db():
         "ALTER TABLE vehicles ADD COLUMN department TEXT DEFAULT 'rental'",
         # 車両ごとの備考（管理表の備考欄をそのまま持たせる）
         "ALTER TABLE vehicles ADD COLUMN notes TEXT DEFAULT ''",
+        # 日程未定の予約（返却同時予約で日取りが決まっていない場合）
+        "ALTER TABLE events ADD COLUMN tentative INTEGER DEFAULT 0",
         "ALTER TABLE staff ADD COLUMN department TEXT DEFAULT 'rental'",
     ]:
         try:
@@ -1208,14 +1210,16 @@ def register_event(v, status, state):
                   (prev_end, v['id'], start_d))
 
     c.execute(
-        'INSERT INTO events (vehicle_id,status,start_date,end_date,staff,client,category,notes,created_at,location,washed,interior_cleaned) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)',
+        'INSERT INTO events (vehicle_id,status,start_date,end_date,staff,client,category,notes,created_at,location,washed,interior_cleaned,tentative) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)',
         (v['id'], status, start_d, end_d, staff, client, category, notes_str,
-         datetime.now(JST).strftime('%Y-%m-%d %H:%M:%S'), location, washed, interior_cleaned))
+         datetime.now(JST).strftime('%Y-%m-%d %H:%M:%S'), location, washed, interior_cleaned,
+         1 if state.get('tentative') else 0))
     conn.commit()
     conn.close()
 
     msg = _build_line_msg(
-        v['number'], v.get('car_type', ''), status, staff, client, start_d, end_d, category
+        v['number'], v.get('car_type', ''), status, staff, client,
+        start_d, end_d, category, tentative=state.get('tentative')
     )
     extras = []
     if mileage: extras.append(f"{mileage}ｷﾛ")
@@ -1796,14 +1800,17 @@ def _fmt_date(ds):
     except:
         return ds
 
-def _build_line_msg(num, car_type, status, staff, client, start_d, end_d, category):
+def _build_line_msg(num, car_type, status, staff, client, start_d, end_d, category, tentative=False):
     line1_parts = [p for p in [num, car_type, status, staff] if p]
-    line1 = '🚗 ' + ' '.join(line1_parts)
-    period = _fmt_date(start_d)
-    if end_d:
-        period += '〜' + _fmt_date(end_d)
-    elif period:
-        period += '〜'
+    line1 = ' '.join(line1_parts)
+    if tentative:
+        period = '日程調整中'
+    else:
+        period = _fmt_date(start_d)
+        if end_d:
+            period += '〜' + _fmt_date(end_d)
+        elif period:
+            period += '〜'
     line3_parts = [p for p in [period, _to_hankaku(category) if category else ''] if p]
     lines = [line1]
     if client: lines.append(client)
@@ -1904,7 +1911,9 @@ def match_staff(ev_staff):
     return ev_staff
 
 def _period_label(ev):
-    """'7/30〜' 形式。単日なら '7/30'"""
+    """'7/30〜' 形式。単日なら '7/30'。日程未定は「日程調整中」"""
+    if (ev or {}).get('tentative'):
+        return '日程調整中'
     s = _fmt_date(ev.get('start_date') or '')
     if not s: return ''
     e = ev.get('end_date') or ''
@@ -1918,6 +1927,36 @@ def _clean_note(ev):
     if note.startswith('所在地:') or note.startswith('エクセル取込'):
         return ''
     return note
+
+def vehicle_region(v, ev=None):
+    """車両が「今どこにあるか」。返却時に入力された所在地を最優先し、
+    無ければ車両マスタの所在地を使う。朝一ラインはこの区分で分ける。"""
+    loc = ((ev or {}).get('location') or '')
+    if '滋賀' in loc: return '滋賀'
+    if '京都' in loc: return '京都'
+    r = v.get('region')
+    return r if r in ('京都', '滋賀') else '京都'
+
+# ① 朝一ラインに載せる「先の予約」の範囲
+_UPCOMING_DAYS = 14
+
+def upcoming_events(date, dept=DEFAULT_DEPT, days=_UPCOMING_DAYS):
+    """対象日より先に始まる予定を車両ごとに返す（開始日の近い順）。
+
+    在庫車でも「いつまで貸せるか」を朝一ラインで伝えるために使う。
+    """
+    d_end = (datetime.strptime(date, '%Y-%m-%d') + timedelta(days=days)).strftime('%Y-%m-%d')
+    conn = get_db()
+    rows = conn.execute(
+        """SELECT e.* FROM events e JOIN vehicles v ON e.vehicle_id = v.id
+           WHERE v.department = ? AND e.start_date > ? AND e.start_date <= ?
+             AND e.status IN ('予約済','貸出中','車検中','点検中','修理中')
+           ORDER BY e.start_date, e.id""", (dept, date, d_end)).fetchall()
+    conn.close()
+    out = {}
+    for r in rows:
+        out.setdefault(r['vehicle_id'], []).append(dict(r))
+    return out
 
 def _stock_marks(v, ev):
     """在庫車両につく状態マーク（★洗車済 ☆中清掃済 ●冬タイヤ）"""
@@ -1988,26 +2027,31 @@ def build_morning_blocks(date=None):
     d = date or today_jst()
     states = resolve_vehicle_states(d, dept='rental')
 
+    upcoming = upcoming_events(d, dept='rental')
+
     stock = {'京都': [], '滋賀': []}
     resv  = {'京都': {}, '滋賀': {}}
     maint = {'京都': [], '滋賀': []}
+    ahead = {'京都': {}, '滋賀': {}}
     unknown = []
     for st in states:
         v, ev, status = st['vehicle'], st['event'], st['status']
-        vregion = v.get('region') if v.get('region') in ('京都', '滋賀') else '京都'
+        # 「その車が今どこにあるか」で分ける。担当者の所属では分けない
+        region = vehicle_region(v, ev)
         if ev is None:
             # 一度も状態登録がない車両は在庫と断定できないため別枠
             unknown.append(v)
         elif status == '在庫':
-            loc = (ev or {}).get('location') or ''
-            region = '滋賀' if '滋賀' in loc else ('京都' if '京都' in loc else vregion)
             stock[region].append((v, ev))
         elif status == '予約済':
-            staff  = match_staff((ev or {}).get('staff', ''))
-            region = _STAFF_REGION.get(staff, vregion)
-            resv[region].setdefault(staff, []).append((v, ev))
+            resv[region].setdefault(match_staff((ev or {}).get('staff', '')), []).append((v, ev))
         elif status in ('修理中', '点検中', '車検中'):
-            maint[vregion].append((v, ev, status))
+            maint[region].append((v, ev, status))
+        # 今は在庫でも先の予約が入っていれば、その車の所在地側に載せる
+        for nx in upcoming.get(v['id'], []):
+            if nx.get('status') != '予約済':
+                continue
+            ahead[region].setdefault(match_staff(nx.get('staff', '')), []).append((v, nx))
 
     dt = datetime.strptime(d, '%Y-%m-%d')
     blocks = []
@@ -2033,8 +2077,14 @@ def build_morning_blocks(date=None):
         section(f'{flag}{region} 在庫 {len(items)}台')
         if items:
             for v, ev in items:
-                item(f"・{v['car_type']} {v['number']}{_stock_marks(v, ev)}".rstrip(),
-                     v, ev, '在庫')
+                line = f"・{v['car_type']} {v['number']}{_stock_marks(v, ev)}".rstrip()
+                nxt = next((x for x in upcoming.get(v['id'], [])), None)
+                if nxt:
+                    if nxt.get('tentative'):
+                        line += '（次の予約：日程調整中）'
+                    else:
+                        line += f"（{_fmt_date(nxt['start_date'])}まで貸出可）"
+                item(line, v, ev, '在庫')
         else:
             plain('（在庫なし）')
 
@@ -2056,6 +2106,18 @@ def build_morning_blocks(date=None):
             first = False
         if first:
             plain('（予約なし）')
+
+        if any(ahead[region].values()):
+            blank()
+            section(f'▼この先の予約（{_UPCOMING_DAYS}日以内）')
+            names2 = order + [x for x in ahead[region] if x not in order]
+            for sname in names2:
+                if sname not in ahead[region]:
+                    continue
+                for v, nx in ahead[region][sname]:
+                    parts = [f"・{v['car_type']}", v['number'], _period_label(nx), sname]
+                    if nx.get('client'): parts.append(nx['client'])
+                    item(' '.join(p for p in parts if p), v, nx, '予約済')
 
         for label, wanted in (('修理', ('修理中',)), ('点検・車検', ('点検中', '車検中'))):
             group = [x for x in maint[region] if x[2] in wanted]
@@ -2389,6 +2451,11 @@ def qr_page():
 def liff_form():
     return send_from_directory('www', 'liff.html')
 
+@app.route('/api/liff/config')
+def api_liff_config():
+    """入力フォームの動作設定。LIFF IDが入っていれば登録後にLINEへ戻れる。"""
+    return jsonify({'liff_id': get_setting('liff_id') or os.environ.get('LIFF_ID', '')})
+
 @app.route('/api/liff/clients')
 def api_liff_clients():
     """取引先マスタ（LIFF用・認証不要）"""
@@ -2446,6 +2513,8 @@ def api_liff_submit():
         '返却':'在庫','車検':'車検中','点検':'点検中',
         # 返却と同時に次の予約を押さえる（1回の送信で2件登録する）
         '返却予約':'在庫',
+        # 既存予約の書き換え（配車先の変更・日程の確定）
+        '予約変更':'予約済',
     }
     action = d.get('action','')
     status = action_map.get(action)
@@ -2453,15 +2522,37 @@ def api_liff_submit():
         return jsonify({'error': 'Invalid action'}), 400
 
     with_reservation = action == '返却予約'
-    if with_reservation and not (d.get('resv_start_date') or '').strip():
-        return jsonify({'error': '予約の開始日を入力してください'}), 400
+    # 日程が決まっていなくても予約は押さえられるようにする（後から予約変更で確定）
+    resv_tentative = with_reservation and not (d.get('resv_start_date') or '').strip()
 
     conn = get_db()
     v    = conn.execute('SELECT * FROM vehicles WHERE id=?', (d.get('vehicle_id'),)).fetchone()
     conn.close()
+    v = dict(v) if v else None
+
+    # 他社から借りた車はマスタに載せない運用なので、登録時にその場で作る。
+    # 返却するとこの車両とイベントはまとめて消える。
+    if v is None and d.get('is_rental_other'):
+        num = (d.get('vehicle_number') or '').strip()
+        if not num:
+            return jsonify({'error': '車番を入力してください'}), 400
+        dept_new = norm_dept(d.get('dept'))
+        conn = get_db()
+        cur = conn.execute(
+            '''INSERT INTO vehicles (number, car_type, region, studless, is_rental_other,
+                                     car_category, department, notes, full_number)
+               VALUES (?,?,?,?,1,?,?,?,?)''',
+            (num, (d.get('car_type') or '他社借り').strip(), d.get('region', ''), 0,
+             '', dept_new, '他社借り（都度登録・返却時に削除）', num))
+        conn.commit()
+        v = dict(conn.execute('SELECT * FROM vehicles WHERE id=?', (cur.lastrowid,)).fetchone())
+        conn.close()
+
     if not v:
         return jsonify({'error': '車両が見つかりません'}), 404
-    v = dict(v)
+
+    if action == '予約変更':
+        return _liff_update_reservation(d, v)
 
     state = {
         'start_date':      d.get('start_date') or today_jst(),
@@ -2511,8 +2602,9 @@ def api_liff_submit():
 
     if with_reservation:
         resv = {
-            'start_date':      d.get('resv_start_date'),
-            'end_date':        d.get('resv_end_date') or None,
+            'start_date':      d.get('resv_start_date') or state['start_date'],
+            'end_date':        None if resv_tentative else (d.get('resv_end_date') or None),
+            'tentative':       resv_tentative,
             'staff':           d.get('staff',''),
             'client':          d.get('client',''),
             'client_contact':  d.get('client_contact',''),
@@ -2526,6 +2618,15 @@ def api_liff_submit():
         sep = chr(10) * 2 + '─' * 10 + chr(10)
         msg = msg + sep + register_event(v, '予約済', resv)
 
+    # 他社借りの車は返却したら履歴ごと消す（マスタに残さない運用）
+    if status == '在庫' and not with_reservation and v.get('is_rental_other'):
+        conn3 = get_db()
+        conn3.execute('DELETE FROM events WHERE vehicle_id=?', (v['id'],))
+        conn3.execute('DELETE FROM vehicles WHERE id=?', (v['id'],))
+        conn3.commit()
+        conn3.close()
+        msg += '\n（他社借り車両のため記録を削除しました）'
+
     # グループLINEに通知（部門ごとの通知先。セールス部門は既定で送信しない）
     dept      = norm_dept(v.get('department'))
     line_sent = push_to_dept_group(dept, msg)
@@ -2534,6 +2635,39 @@ def api_liff_submit():
                            f'group_id={dept_group_id(dept)!r} token={bool(LINE_CHANNEL_TOKEN)}')
 
     return jsonify({'ok': True, 'message': msg, 'line_sent': line_sent})
+
+def _liff_update_reservation(d, v):
+    """既存の予約を書き換える（配車先の変更・日程の確定など）"""
+    eid = d.get('event_id')
+    if not eid:
+        return jsonify({'error': '変更する予約を選んでください'}), 400
+    conn = get_db()
+    ev = conn.execute('SELECT * FROM events WHERE id=?', (eid,)).fetchone()
+    if not ev or ev['vehicle_id'] != v['id']:
+        conn.close()
+        return jsonify({'error': '予約が見つかりません'}), 404
+
+    tentative = not (d.get('start_date') or '').strip()
+    start_d = (d.get('start_date') or '').strip() or ev['start_date'] or today_jst()
+    end_d   = None if tentative else ((d.get('end_date') or '').strip() or None)
+    staff   = d.get('staff', '') or (ev['staff'] or '')
+    client  = d.get('client', '') or (ev['client'] or '')
+    cat     = d.get('category', '') or (ev['category'] or '')
+    notes   = (d.get('notes') or '').strip() or (ev['notes'] or '')
+
+    conn.execute(
+        """UPDATE events SET start_date=?, end_date=?, staff=?, client=?, client_contact=?,
+                             category=?, notes=?, tentative=? WHERE id=?""",
+        (start_d, end_d, staff, client, d.get('client_contact', '') or (ev['client_contact'] or ''),
+         cat, notes, 1 if tentative else 0, eid))
+    conn.commit()
+    conn.close()
+
+    msg = _build_line_msg(v['number'], v.get('car_type', ''), '予約変更',
+                          staff, client, start_d, end_d, cat, tentative=tentative)
+    dept = norm_dept(v.get('department'))
+    sent = push_to_dept_group(dept, msg)
+    return jsonify({'ok': True, 'message': msg, 'line_sent': sent})
 
 @app.route('/api/liff/events')
 def api_liff_events():
@@ -2544,10 +2678,11 @@ def api_liff_events():
     today = today_jst()
     conn = get_db()
     rows = conn.execute(
-        '''SELECT id, status, start_date, end_date, client, staff FROM events
+        '''SELECT id, status, start_date, end_date, client, client_contact,
+                  staff, category, notes, tentative FROM events
            WHERE vehicle_id=? AND status IN ('予約済','貸出中')
-             AND (end_date IS NULL OR end_date >= ?)
-           ORDER BY start_date''',
+             AND (end_date IS NULL OR end_date >= ? OR tentative=1)
+           ORDER BY tentative DESC, start_date''',
         (vehicle_id, today)
     ).fetchall()
     conn.close()
@@ -2577,7 +2712,7 @@ def api_liff_cancel():
     ctype = v['car_type'] if v else ''
     client = ev['client'] or ''
     start_d = ev['start_date'] or ''
-    msg = f'🚗 {num} {ctype} ❌キャンセル\n{client}\n{_fmt_date(start_d)}〜 取り消し'
+    msg = f'{num} {ctype} 予約取り消し\n{client}\n{_fmt_date(start_d)}〜'
     dept = norm_dept(v['department'] if v else None)
     if dept == 'rental':
         # レンタカー事業部は従来どおり環境変数の宛先（挙動を変えない）

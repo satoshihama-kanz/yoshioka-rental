@@ -64,12 +64,19 @@ body.dept-sales .action-btn.selected{border-color:#4a3410;background:#4a3410}
   <!-- 社外借り -->
   <div class="section" style="border:2px solid #FF9800;background:#FFF8E1;">
     <label style="display:flex;align-items:center;gap:12px;cursor:pointer;padding:4px 0;">
-      <input type="checkbox" id="isRentalOther" style="width:26px;height:26px;accent-color:#FF9800;flex-shrink:0;">
+      <input type="checkbox" id="isRentalOther" onchange="onRentalOtherToggle()" style="width:26px;height:26px;accent-color:#FF9800;flex-shrink:0;">
       <div>
         <div style="font-size:15px;font-weight:bold;color:#E65100;">🔑 社外借り車両（他社レンタカー）</div>
         <div style="font-size:12px;color:#888;margin-top:2px;">他社から借りた車両の場合はチェック</div>
       </div>
     </label>
+    <div id="rentalOtherWrap" class="hide" style="margin-top:10px;">
+      <input type="text" id="otherCarType" placeholder="車種（例: ﾉｰﾄ）"
+             style="width:100%;padding:10px;border:1px solid #ddd;border-radius:6px;font-size:15px;">
+      <div style="font-size:11px;color:#E65100;margin-top:6px;line-height:1.6;">
+        マスタに無い車番でも登録できます。返却するとこの車両の記録は消えます。
+      </div>
+    </div>
   </div>
 
   <!-- ① 車両番号 -->
@@ -108,15 +115,18 @@ body.dept-sales .action-btn.selected{border-color:#4a3410;background:#4a3410}
       <button class="action-btn" onclick="selectAction('返却予約')" id="btn-返却予約" style="grid-column:1/-1;background:#F1F8F4;border-color:#4CAF50;">
         <span class="icon">✅➕📅</span>返却＋そのまま予約
       </button>
-      <button class="action-btn" onclick="selectAction('キャンセル')" id="btn-キャンセル" style="grid-column:1/-1;background:#fff3f3;border-color:#e57373;">
+      <button class="action-btn" onclick="selectAction('予約変更')" id="btn-予約変更" style="background:#FFF8E7;border-color:#FFB74D;">
+        <span class="icon">✏️</span>予約変更
+      </button>
+      <button class="action-btn" onclick="selectAction('キャンセル')" id="btn-キャンセル" style="background:#fff3f3;border-color:#e57373;">
         <span class="icon">❌</span>予約キャンセル
       </button>
     </div>
   </div>
 
-  <!-- キャンセル対象選択 -->
+  <!-- 予約変更・キャンセルの対象選択 -->
   <div class="section hide" id="cancelSection">
-    <div class="section-title">🗑 取り消す予約を選択</div>
+    <div class="section-title" id="cancelTitle">🗑 取り消す予約を選択</div>
     <div id="cancelList" style="display:flex;flex-direction:column;gap:8px;"></div>
     <p id="cancelEmpty" class="hide" style="color:#888;font-size:13px;">先々の予約が見つかりません</p>
   </div>
@@ -141,7 +151,7 @@ body.dept-sales .action-btn.selected{border-color:#4a3410;background:#4a3410}
     <div class="section-title">📅 続けて押さえる予約</div>
     <div class="date-row">
       <div class="form-row">
-        <label class="required">予約開始日</label>
+        <label id="resvStartLabel">予約開始日</label>
         <input type="date" id="resvStartDate">
       </div>
       <div class="form-row">
@@ -150,7 +160,8 @@ body.dept-sales .action-btn.selected{border-color:#4a3410;background:#4a3410}
       </div>
     </div>
     <div style="font-size:11px;color:#2E7D4F;margin-top:6px;line-height:1.6;">
-      返却の登録と同時に予約も入ります。下の顧客名・適用・担当は予約の情報になります。
+      返却の登録と同時に予約も入ります。下の顧客名・適用・担当は予約の情報になります。<br>
+      日程が未定なら空のままでかまいません。「日程調整中」として登録され、あとから「予約変更」で確定できます。
     </div>
   </div>
 
@@ -216,7 +227,7 @@ body.dept-sales .action-btn.selected{border-color:#4a3410;background:#4a3410}
   </div>
 
   <!-- 所在地 -->
-  <div class="section">
+  <div class="section" id="locationSection">
     <div class="section-title">📍 現在の所在地</div>
     <select id="location">
       <option value="">選択してください（任意）</option>
@@ -417,8 +428,11 @@ function lookupVehicle() {
       const res  = await fetch(`${API_BASE}/api/liff/vehicles?number=${encodeURIComponent(num)}&dept=${currentDept}`);
       const data = await res.json();
       if (data.length === 0) {
-        info.textContent = `車番 ${num} は${DEPT_LABELS[currentDept]}に登録されていません`;
-        info.className = 'vehicle-info error';
+        const other = document.getElementById('isRentalOther').checked;
+        info.textContent = other
+          ? `他社借り車両として登録します（車番 ${num}）`
+          : `車番 ${num} は${DEPT_LABELS[currentDept]}に登録されていません`;
+        info.className = other ? 'vehicle-info' : 'vehicle-info error';
         selWrap.classList.add('hide');
         showVehicleNote(null);
       } else if (data.length === 1) {
@@ -494,7 +508,11 @@ function selectAction(action) {
 
 function updateSections() {
   const a = selectedAction;
-  const isCancel = a === 'キャンセル';
+  const isChange = a === '予約変更';
+  // 予約変更もキャンセルと同じく「対象の予約を選ぶ」画面を使う
+  const isCancel = a === 'キャンセル' || isChange;
+  document.getElementById('cancelTitle').textContent =
+    isChange ? '✏️ 変更する予約を選択' : '🗑 取り消す予約を選択';
   // 返却＋予約は「返却の記録」と「次の予約」を1回で登録する
   const isReturnResv = a === '返却予約';
   const isReturnOnly = a === '返却';
@@ -503,18 +521,29 @@ function updateSections() {
   // キャンセル選択肢
   document.getElementById('cancelSection').classList.toggle('hide', !isCancel);
   if (isCancel) loadCancelList();
-  // 日付
-  document.getElementById('dateSection').classList.toggle('hide', isCancel);
+  // 配車は届けに行く操作なので、今どこにあるかは聞かない
+  document.getElementById('locationSection').classList.toggle('hide',
+    a === '配車' || a === 'キャンセル');
+  // 日付（予約変更では新しい日程を入れてもらう）
+  document.getElementById('dateSection').classList.toggle('hide', isCancel && !isChange);
   // 終了日
-  document.getElementById('endDateWrap').classList.toggle('hide', isReturnOnly || isReturnResv || isCancel);
-  // 顧客名（返却＋予約では予約側の情報として使う）
-  document.getElementById('clientSection').classList.toggle('hide', a === '修理' || isReturnOnly || isCancel);
+  document.getElementById('endDateWrap').classList.toggle('hide',
+    isReturnOnly || isReturnResv || (isCancel && !isChange));
+  // 顧客名（返却＋予約では予約側、予約変更では配車先の変更に使う）
+  document.getElementById('clientSection').classList.toggle('hide',
+    a === '修理' || isReturnOnly || (isCancel && !isChange));
   // 適用
-  document.getElementById('categorySection').classList.toggle('hide', a === '修理' || isReturnOnly || isCancel);
+  document.getElementById('categorySection').classList.toggle('hide',
+    a === '修理' || isReturnOnly || (isCancel && !isChange));
   // 担当
-  document.getElementById('staffSection').classList.toggle('hide', isCancel);
+  document.getElementById('staffSection').classList.toggle('hide', isCancel && !isChange);
   // 距離
-  document.getElementById('mileageSection').classList.toggle('hide', a === '予約' || a === '修理' || isCancel);
+  document.getElementById('mileageSection').classList.toggle('hide',
+    a === '予約' || a === '修理' || isCancel);
+  // 予約変更では開始日を空にできる（日程未定のまま置ける）
+  document.getElementById('dateLabel').textContent =
+    isChange ? '予約開始日（未定なら空欄）' :
+    ((isReturnOnly || isReturnResv) ? '返却日' : '開始日');
 }
 
 // 担当選択
@@ -548,12 +577,15 @@ async function loadCancelList() {
     evs.forEach(ev => {
       const d = document.createElement('div');
       d.style.cssText = 'padding:10px 14px;border:2px solid #ddd;border-radius:8px;cursor:pointer;font-size:13px;';
-      d.innerHTML = `<strong>${ev.status}</strong> ${ev.start_date||''}${ev.end_date ? '〜'+ev.end_date : '〜'}<br>
+      const period = ev.tentative ? '日程調整中'
+                   : `${ev.start_date||''}${ev.end_date ? '〜'+ev.end_date : '〜'}`;
+      d.innerHTML = `<strong>${ev.status}</strong> ${period}<br>
         <span style="color:#555;">${ev.client||''} ${ev.staff||''}</span>`;
       d.onclick = () => {
         list.querySelectorAll('div').forEach(x => x.style.borderColor = '#ddd');
-        d.style.borderColor = '#e53935';
+        d.style.borderColor = selectedAction === '予約変更' ? '#FB8C00' : '#e53935';
         selectedCancelEventId = ev.id;
+        if (selectedAction === '予約変更') fillFromEvent(ev);
         updateSubmitBtn();
       };
       list.appendChild(d);
@@ -562,14 +594,80 @@ async function loadCancelList() {
   updateSubmitBtn();
 }
 
+// 選んだ予約の内容をフォームに読み込む（予約変更用）
+function fillFromEvent(ev) {
+  document.getElementById('startDate').value = ev.tentative ? '' : (ev.start_date || '');
+  document.getElementById('endDate').value   = ev.end_date || '';
+  document.getElementById('client').value    = ev.client || '';
+  document.getElementById('clientContact').value = ev.client_contact || '';
+  if (ev.category) document.getElementById('category').value = ev.category;
+  setStaff(ev.staff || '');
+}
+
+// 担当プルダウンに無い名前は「その他」に入れる
+function setStaff(name) {
+  const sel = document.getElementById('staffSelect');
+  const has = [...sel.options].some(o => o.value === name);
+  if (name && has) {
+    sel.value = name;
+  } else if (name) {
+    sel.value = '__other__';
+    document.getElementById('staffInput').value = name;
+  } else {
+    sel.value = '';
+  }
+  staffChanged();
+}
+
+// 登録後にLINEの画面へ戻す。LIFFとして開かれていれば閉じられる。
+// 閉じられない環境では false を返し、呼び出し側でフォームを初期化する。
+function closeToLine() {
+  try {
+    if (window.liff && liff.isInClient && liff.isInClient()) {
+      liff.closeWindow();
+      return true;
+    }
+  } catch (e) { /* LIFF未初期化 */ }
+  return false;
+}
+
+// LIFF IDが設定されていればSDKを初期化する（未設定なら従来どおり動く）
+(async function initLiff() {
+  try {
+    const cfg = await fetch(`${API_BASE}/api/liff/config`).then(r => r.json());
+    if (!cfg.liff_id) return;
+    await new Promise((ok, ng) => {
+      const t = document.createElement('script');
+      t.src = 'https://static.line-scdn.net/liff/edge/2/sdk.js';
+      t.onload = ok; t.onerror = ng;
+      document.head.appendChild(t);
+    });
+    await liff.init({ liffId: cfg.liff_id });
+  } catch (e) { console.warn('[liff] init skipped:', e); }
+})();
+
 // 送信ボタン活性チェック
 function updateSubmitBtn() {
   const isCancel = selectedAction === 'キャンセル';
-  const ok = isCancel ? (selectedVehicleId && selectedCancelEventId) : (selectedVehicleId && selectedAction);
+  const isChange = selectedAction === '予約変更';
+  const other    = document.getElementById('isRentalOther').checked;
+  // 他社借りはマスタに無い車番でも登録できるので、車番が入っていればよい
+  const hasVehicle = selectedVehicleId ||
+    (other && document.getElementById('vehicleNumber').value.trim());
+  const ok = (isCancel || isChange)
+    ? (selectedVehicleId && selectedCancelEventId)
+    : (hasVehicle && selectedAction);
   const btn = document.getElementById('submitBtn');
   btn.disabled = !ok;
-  btn.textContent = isCancel ? '取り消す' : '登録する';
-  btn.style.background = isCancel ? '#e53935' : '';
+  btn.textContent = isCancel ? '取り消す' : (isChange ? '変更する' : '登録する');
+  btn.style.background = isCancel ? '#e53935' : (isChange ? '#FB8C00' : '');
+}
+
+// 他社借りチェックの切り替え
+function onRentalOtherToggle() {
+  const on = document.getElementById('isRentalOther').checked;
+  document.getElementById('rentalOtherWrap').classList.toggle('hide', !on);
+  updateSubmitBtn();
 }
 
 // 送信
@@ -601,16 +699,11 @@ async function submitForm() {
     is_rental_other:  document.getElementById('isRentalOther').checked,
     resv_start_date:  document.getElementById('resvStartDate').value || null,
     resv_end_date:    document.getElementById('resvEndDate').value   || null,
+    dept:             currentDept,
+    vehicle_number:   document.getElementById('vehicleNumber').value.trim(),
+    car_type:         document.getElementById('otherCarType').value.trim(),
+    event_id:         selectedCancelEventId,
   };
-
-  if (selectedAction === '返却予約' && !payload.resv_start_date) {
-    result.className = 'result error';
-    result.textContent = '予約の開始日を入力してください';
-    result.style.display = 'block';
-    btn.disabled = false;
-    btn.textContent = '登録する';
-    return;
-  }
 
   try {
     const res  = await fetch(`${API_BASE}/api/liff/submit`, {
@@ -626,12 +719,14 @@ async function submitForm() {
       result.style.whiteSpace = 'pre-wrap';
       btn.textContent = '登録完了 ✅';
       btn.style.background = '#4CAF50';
-      // フォームリセット（3秒後）
+      // 登録できたらLINEの画面に戻す（戻せない環境ではフォームを初期化）
       setTimeout(() => {
-        resetForm();
-        btn.textContent = '登録する';
-        btn.disabled = true;
-      }, 3000);
+        if (!closeToLine()) {
+          resetForm();
+          btn.textContent = '登録する';
+          btn.disabled = true;
+        }
+      }, 1500);
     } else {
       throw new Error(data.error || '登録に失敗しました');
     }
@@ -660,6 +755,8 @@ function resetForm() {
   document.getElementById('endDate').value = '';
   document.getElementById('resvStartDate').value = '';
   document.getElementById('resvEndDate').value = '';
+  document.getElementById('otherCarType').value = '';
+  document.getElementById('rentalOtherWrap').classList.add('hide');
   document.getElementById('location').value = '';
   document.getElementById('washed').checked = false;
   document.getElementById('interiorCleaned').checked = false;
@@ -694,7 +791,11 @@ async function cancelEvent() {
       result.style.display = 'block';
       btn.textContent = '取り消し完了 ✅';
       btn.style.background = '#4CAF50';
-      setTimeout(() => { resetForm(); btn.textContent = '登録する'; btn.style.background = ''; btn.disabled = true; }, 3000);
+      setTimeout(() => {
+        if (!closeToLine()) {
+          resetForm(); btn.textContent = '登録する'; btn.style.background = ''; btn.disabled = true;
+        }
+      }, 1500);
     } else {
       throw new Error(data.error || '取り消しに失敗しました');
     }
