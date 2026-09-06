@@ -1904,7 +1904,7 @@ _STALE_DAYS = 60
 
 def match_staff(ev_staff):
     """イベントの担当者フィールドをスタッフマスタにマッチング"""
-    if not ev_staff: return 'その他'
+    if not ev_staff: return '担当未設定'
     for s in MORNING_STAFF:
         if ev_staff in s or s in ev_staff:
             return s
@@ -1951,10 +1951,17 @@ def upcoming_events(date, dept=DEFAULT_DEPT, days=_UPCOMING_DAYS):
         """SELECT e.* FROM events e JOIN vehicles v ON e.vehicle_id = v.id
            WHERE v.department = ? AND e.start_date > ? AND e.start_date <= ?
              AND e.status IN ('予約済','貸出中','車検中','点検中','修理中')
-           ORDER BY e.start_date, e.id""", (dept, date, d_end)).fetchall()
+           ORDER BY e.start_date, e.created_at DESC, e.id DESC""", (dept, date, d_end)).fetchall()
     conn.close()
+    # 同じ車の同じ日に複数の登録があれば、いちばん新しいものだけを残す
+    # （画面側の判定と同じ規則。重複登録がそのまま並ぶのを防ぐ）
+    seen = set()
     out = {}
     for r in rows:
+        key = (r['vehicle_id'], r['start_date'])
+        if key in seen:
+            continue
+        seen.add(key)
         out.setdefault(r['vehicle_id'], []).append(dict(r))
     return out
 
@@ -2115,7 +2122,8 @@ def build_morning_blocks(date=None):
                 if sname not in ahead[region]:
                     continue
                 for v, nx in ahead[region][sname]:
-                    parts = [f"・{v['car_type']}", v['number'], _period_label(nx), sname]
+                    label = '' if sname == '担当未設定' else sname
+                    parts = [f"・{v['car_type']}", v['number'], _period_label(nx), label]
                     if nx.get('client'): parts.append(nx['client'])
                     item(' '.join(p for p in parts if p), v, nx, '予約済')
 
