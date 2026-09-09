@@ -1194,6 +1194,19 @@ def register_event(v, status, state):
 
     conn = get_db()
     c    = conn.cursor()
+    consumed_n = 0
+
+    # 引取（返却）は、いま出ている貸出の取引先をそのまま引き継いで表示する
+    prev_client = ''
+    if status == '在庫' and not client:
+        row = c.execute(
+            '''SELECT client FROM events
+               WHERE vehicle_id=? AND status IN ('貸出中','予約済')
+                 AND (end_date IS NULL OR end_date >= ?)
+                 AND COALESCE(client,'') <> ''
+               ORDER BY created_at DESC, id DESC LIMIT 1''', (v['id'], start_d)).fetchone()
+        if row:
+            prev_client = row['client']
 
     # A) B) 既存のオープンイベント（終了日なし or 将来終了）を自動クローズ
     # 新しいイベントの開始日以降は新しいイベントが有効になるため、前のイベントを締める
@@ -1209,6 +1222,21 @@ def register_event(v, status, state):
                      WHERE vehicle_id=? AND end_date IS NULL AND start_date < ?''',
                   (prev_end, v['id'], start_d))
 
+    # 配車したら、その車の重なる予約は消化済み。
+    # 開始日が配車と同じ日だと上のクローズ処理に引っかからず残ってしまい、
+    # 朝一ラインに「この先の予約」として出続けていた。
+    if status == '貸出中':
+        consumed = c.execute(
+            '''SELECT id FROM events
+               WHERE vehicle_id=? AND status='予約済'
+                 AND COALESCE(start_date,'') <= ?
+                 AND COALESCE(end_date,'9999-12-31') >= ?''',
+            (v['id'], end_d or '9999-12-31', start_d)).fetchall()
+        if consumed:
+            c.execute('DELETE FROM events WHERE id IN (%s)'
+                      % ','.join('?' * len(consumed)), [r['id'] for r in consumed])
+        consumed_n = len(consumed)
+
     c.execute(
         'INSERT INTO events (vehicle_id,status,start_date,end_date,staff,client,category,notes,created_at,location,washed,interior_cleaned,tentative) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)',
         (v['id'], status, start_d, end_d, staff, client, category, notes_str,
@@ -1218,13 +1246,12 @@ def register_event(v, status, state):
     conn.close()
 
     msg = _build_line_msg(
-        v['number'], v.get('car_type', ''), status, staff, client,
-        start_d, end_d, category, tentative=state.get('tentative')
+        v['number'], v.get('car_type', ''), status, staff, client or prev_client,
+        start_d, end_d, category, tentative=state.get('tentative'),
+        mileage=mileage, remarks=remarks
     )
-    extras = []
-    if mileage: extras.append(f"{mileage}ｷﾛ")
-    if remarks: extras.append(remarks)
-    if extras:  msg += ' ' + ' '.join(extras)
+    if consumed_n:
+        msg += f'\n（予約{consumed_n}件を配車に切り替えました）'
     return msg
 
 def ask_all_missing(state):
@@ -1800,21 +1827,67 @@ def _fmt_date(ds):
     except:
         return ds
 
-def _build_line_msg(num, car_type, status, staff, client, start_d, end_d, category, tentative=False):
-    line1_parts = [p for p in [num, car_type, status, staff] if p]
-    line1 = ' '.join(line1_parts)
+# 状態ではなく「何をしたか」で伝える（奥谷さんの文面サンプルに合わせる）
+_ACT_LABEL = {
+    '貸出中': '配車',
+    '予約取消': '予約取消',
+    '予約変更': '予約変更',
+    '在庫':   '引取',
+    '予約済': '予約',
+    '修理中': '修理',
+    '車検中': '車検',
+    '点検中': '点検',
+}
+
+def _day_label(ds, tentative=False):
+    """予約の日取り。'10日' の形。月をまたぐ場合だけ '10/3' と出す。"""
     if tentative:
-        period = '日程調整中'
+        return '日程未定'
+    if not ds:
+        return ''
+    try:
+        dt = datetime.strptime(ds, '%Y-%m-%d')
+    except Exception:
+        return ds
+    now = datetime.now(JST)
+    return f'{dt.day}日' if dt.month == now.month else f'{dt.month}/{dt.day}'
+
+def _resv_tail(staff, client, start_d, category, tentative=False):
+    """引取に続けて出す予約の短縮表記。
+
+      奥谷慎太郎予約
+      10日　松井自動車　損保
+    """
+    head = f'{staff}予約' if staff else '予約'
+    body = '　'.join(x for x in [_day_label(start_d, tentative), client,
+                                 _to_hankaku(category) if category else ''] if x)
+    return head + ('\n' + body if body else '')
+
+def _build_line_msg(num, car_type, status, staff, client, start_d, end_d, category,
+                    tentative=False, mileage='', remarks=''):
+    """グループLINEに流す共有メッセージ。
+
+      310 ｾﾚﾅ　予約          310 ｾﾚﾅ　配車
+      10日　ﾎﾞﾃﾞｨﾌｧｲﾄｼﾞｬﾊﾟﾝ    ﾎﾞﾃﾞｨﾌｧｲﾄｼﾞｬﾊﾟﾝ
+      損保                   32100ｷﾛ
+      奥谷慎太郎
+    """
+    act = _ACT_LABEL.get(status, status)
+    lines = [f'{num} {car_type}　{act}'.rstrip()]
+
+    if act in ('予約', '予約変更', '予約取消'):
+        day = _day_label(start_d, tentative)
+        head = '　'.join(x for x in [day, client] if x)
+        if head: lines.append(head)
+        if category: lines.append(_to_hankaku(category))
+        if staff: lines.append(staff)
     else:
-        period = _fmt_date(start_d)
-        if end_d:
-            period += '〜' + _fmt_date(end_d)
-        elif period:
-            period += '〜'
-    line3_parts = [p for p in [period, _to_hankaku(category) if category else ''] if p]
-    lines = [line1]
-    if client: lines.append(client)
-    if line3_parts: lines.append(' '.join(line3_parts))
+        if client: lines.append(client)
+        if mileage: lines.append(f'{mileage}ｷﾛ')
+        if act in ('修理', '車検', '点検') and staff:
+            lines.append(staff)
+    if remarks:
+        lines.append(remarks)
     return '\n'.join(lines)
 
 def _event_summary_line(d, conn):
@@ -2623,8 +2696,10 @@ def api_liff_submit():
             'washed':          False,
             'interior_cleaned':False,
         }
-        sep = chr(10) * 2 + '─' * 10 + chr(10)
-        msg = msg + sep + register_event(v, '予約済', resv)
+        register_event(v, '予約済', resv)
+        msg = msg + chr(10) * 2 + _resv_tail(
+            resv['staff'], resv['client'], resv['start_date'],
+            resv['category'], resv_tentative)
 
     # 他社借りの車は返却したら履歴ごと消す（マスタに残さない運用）
     if status == '在庫' and not with_reservation and v.get('is_rental_other'):
@@ -2720,7 +2795,9 @@ def api_liff_cancel():
     ctype = v['car_type'] if v else ''
     client = ev['client'] or ''
     start_d = ev['start_date'] or ''
-    msg = f'{num} {ctype} 予約取り消し\n{client}\n{_fmt_date(start_d)}〜'
+    msg = _build_line_msg(num, ctype, '予約取消', ev['staff'] or '', client,
+                          start_d, ev['end_date'], ev['category'] or '',
+                          tentative=bool(ev['tentative']))
     dept = norm_dept(v['department'] if v else None)
     if dept == 'rental':
         # レンタカー事業部は従来どおり環境変数の宛先（挙動を変えない）
