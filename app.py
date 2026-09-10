@@ -2001,14 +2001,36 @@ def _clean_note(ev):
         return ''
     return note
 
-def vehicle_region(v, ev=None):
-    """車両が「今どこにあるか」。返却時に入力された所在地を最優先し、
-    無ければ車両マスタの所在地を使う。朝一ラインはこの区分で分ける。"""
-    loc = ((ev or {}).get('location') or '')
+# 所在地の呼び名から担当支店を割り出す。管理表のQ列にはこの名前が入る。
+_BRANCH_REGION = {
+    '東舞鶴店': '京都', '西舞鶴店': '京都', '峰山店': '京都',
+    'P滋賀栗東': '滋賀', 'トヨタ水口泉': '滋賀',
+}
+
+def branch_region(loc):
+    """所在地の文字列から京都／滋賀を判定する。分からなければ None。"""
+    loc = (loc or '').strip()
+    if not loc:
+        return None
     if '滋賀' in loc: return '滋賀'
     if '京都' in loc: return '京都'
+    return _BRANCH_REGION.get(loc)
+
+def vehicle_region(v, ev=None):
+    """車両が「今どこにあるか」。入力された所在地を最優先し、
+    無ければ車両マスタの所在地を使う。朝一ラインはこの区分で分ける。"""
+    r = branch_region((ev or {}).get('location'))
+    if r:
+        return r
     r = v.get('region')
     return r if r in ('京都', '滋賀') else '京都'
+
+def _place_label(ev):
+    """支店名そのものではない所在地（自社工場など）を朝一ラインに添える"""
+    loc = ((ev or {}).get('location') or '').strip()
+    if not loc or loc in ('京都本社', '滋賀支店'):
+        return ''
+    return f'（{loc}）'
 
 # ① 朝一ラインに載せる「先の予約」の範囲
 _UPCOMING_DAYS = 14
@@ -2158,6 +2180,7 @@ def build_morning_blocks(date=None):
         if items:
             for v, ev in items:
                 line = f"・{v['car_type']} {v['number']}{_stock_marks(v, ev)}".rstrip()
+                line += _place_label(ev)
                 nxt = next((x for x in upcoming.get(v['id'], [])), None)
                 if nxt:
                     if nxt.get('tentative'):
@@ -2207,7 +2230,7 @@ def build_morning_blocks(date=None):
             blank()
             section(f'▼{label}')
             for v, ev, status in group:
-                item(f"・{v['car_type']} {v['number']}", v, ev, status)
+                item(f"・{v['car_type']} {v['number']}{_place_label(ev)}", v, ev, status)
 
         if region == '京都':
             blank()
@@ -3040,11 +3063,16 @@ def admin_sync_status():
                             (str(it['number']), dept)).fetchone()
         if not row:
             not_found.append(it.get('full_number') or it.get('number')); continue
+        loc = it.get('location', '') or ''
         c.execute('''INSERT INTO events
                      (vehicle_id,status,start_date,end_date,staff,client,category,notes,created_at,location)
                      VALUES (?,?,?,?,?,?,?,?,?,?)''',
                   (row[0], it['status'], d, None, it.get('staff',''), '', '',
-                   it.get('notes',''), now, ''))
+                   it.get('notes',''), now, loc))
+        # 管理表の所在地は「今どこにあるか」の正。支店が読み取れれば車両側にも持たせる
+        reg = branch_region(loc)
+        if reg:
+            c.execute('UPDATE vehicles SET region=? WHERE id=?', (reg, row[0]))
         inserted += 1
     conn.commit(); conn.close()
     return jsonify({'inserted': inserted, 'not_found_count': len(not_found),
