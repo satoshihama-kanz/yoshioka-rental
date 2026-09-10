@@ -1222,6 +1222,12 @@ def register_event(v, status, state):
                      WHERE vehicle_id=? AND end_date IS NULL AND start_date < ?''',
                   (prev_end, v['id'], start_d))
 
+    # 同じ車・同じ開始日の予約を登録し直したら、前の予約は差し替える
+    if status == '予約済':
+        c.execute('''DELETE FROM events
+                     WHERE vehicle_id=? AND status='予約済' AND start_date=?''',
+                  (v['id'], start_d))
+
     # 配車したら、その車の重なる予約は消化済み。
     # 開始日が配車と同じ日だと上のクローズ処理に引っかからず残ってしまい、
     # 朝一ラインに「この先の予約」として出続けていた。
@@ -2088,6 +2094,8 @@ def resolve_vehicle_states(date=None, dept=DEFAULT_DEPT):
         '''SELECT * FROM events
            WHERE start_date<=? AND (end_date IS NULL OR end_date>=?)
            ORDER BY created_at DESC, id DESC''', (d, d)).fetchall()
+    ever_ids = {r[0] for r in conn.execute(
+        'SELECT DISTINCT vehicle_id FROM events').fetchall()}
     conn.close()
 
     stale_before = (datetime.strptime(d, '%Y-%m-%d') - timedelta(days=_STALE_DAYS)).strftime('%Y-%m-%d')
@@ -2100,11 +2108,14 @@ def resolve_vehicle_states(date=None, dept=DEFAULT_DEPT):
             continue
         latest.setdefault(r['vehicle_id'], r)
 
+    # has_any は「一度でも登録がある車か」。今日たまたま予定が無いだけの車を
+    # 「状態未登録」に混ぜないために使う。
     out = []
     for v in vehicles:
         ev = latest.get(v['id'])
         status = (ev or {}).get('status') or '在庫'
-        out.append({'vehicle': v, 'event': ev, 'status': status})
+        out.append({'vehicle': v, 'event': ev, 'status': status,
+                    'has_any': v['id'] in ever_ids})
     return out
 
 def blocks_to_text(blocks):
@@ -2140,8 +2151,9 @@ def build_morning_blocks(date=None):
         v, ev, status = st['vehicle'], st['event'], st['status']
         # 「その車が今どこにあるか」で分ける。担当者の所属では分けない
         region = vehicle_region(v, ev)
-        if ev is None:
-            # 一度も状態登録がない車両は在庫と断定できないため別枠
+        if ev is None and not st.get('has_any'):
+            # 一度も状態登録がない車両だけを別枠にする。
+            # 予定が今日に掛かっていないだけの車は空いている＝在庫。
             unknown.append(v)
         elif status == '在庫':
             stock[region].append((v, ev))

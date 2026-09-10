@@ -14,6 +14,9 @@ body{font-family:'Meiryo',sans-serif;background:#f0f2f5;min-height:100vh}
 .section-num{display:inline-block;background:#1a3a5c;color:white;border-radius:50%;width:22px;height:22px;text-align:center;line-height:22px;font-size:12px;font-weight:bold;margin-right:6px}
 .vehicle-note{margin-top:6px;padding:7px 10px;background:#FDECEA;border-left:3px solid #C0392B;
   border-radius:4px;font-size:13px;color:#8B2A1F;line-height:1.6;font-weight:bold}
+.kind-btn{padding:12px 6px;border:2px solid #ddd;border-radius:8px;background:white;
+  font-size:15px;font-weight:bold;cursor:pointer;font-family:inherit;color:#333}
+.kind-btn.selected{border-color:#9C27B0;background:#9C27B0;color:white}
 .section-title{font-size:13px;font-weight:bold;color:#333;margin-bottom:10px;display:flex;align-items:center}
 label{display:block;font-size:12px;color:#888;margin-bottom:4px;font-weight:bold}
 input[type=text],input[type=number],input[type=date],select,textarea{
@@ -107,7 +110,7 @@ body.dept-sales .action-btn.selected{border-color:#4a3410;background:#4a3410}
         <span class="icon">📅</span>予約
       </button>
       <button class="action-btn" onclick="selectAction('修理')" id="btn-修理">
-        <span class="icon">🔧</span>修理・点検
+        <span class="icon">🔧</span>修理・点検・車検
       </button>
       <button class="action-btn" onclick="selectAction('返却')" id="btn-返却">
         <span class="icon">✅</span>返却
@@ -121,6 +124,16 @@ body.dept-sales .action-btn.selected{border-color:#4a3410;background:#4a3410}
       <button class="action-btn" onclick="selectAction('キャンセル')" id="btn-キャンセル" style="background:#fff3f3;border-color:#e57373;">
         <span class="icon">❌</span>予約キャンセル
       </button>
+    </div>
+  </div>
+
+  <!-- 修理・点検・車検の種別 -->
+  <div class="section hide" id="repairKindSection" style="border:2px solid #9C27B0;">
+    <div class="section-title">🔧 どれですか？</div>
+    <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;">
+      <button type="button" class="kind-btn" id="kind-修理" onclick="selectKind('修理')">修理</button>
+      <button type="button" class="kind-btn" id="kind-点検" onclick="selectKind('点検')">点検</button>
+      <button type="button" class="kind-btn" id="kind-車検" onclick="selectKind('車検')">車検</button>
     </div>
   </div>
 
@@ -498,8 +511,19 @@ function selectVehicle() {
 }
 
 // 要件選択
+let selectedKind = '修理';
+
+// 修理・点検・車検の選び分け
+function selectKind(kind) {
+  selectedKind = kind;
+  ['修理', '点検', '車検'].forEach(k =>
+    document.getElementById('kind-' + k).classList.toggle('selected', k === kind));
+  updateSubmitBtn();
+}
+
 function selectAction(action) {
   selectedAction = action;
+  if (action === '修理') selectKind(selectedKind);
   document.querySelectorAll('.action-btn').forEach(b => b.classList.remove('selected'));
   document.getElementById('btn-' + action).classList.add('selected');
   updateSections();
@@ -521,6 +545,7 @@ function updateSections() {
   // キャンセル選択肢
   document.getElementById('cancelSection').classList.toggle('hide', !isCancel);
   if (isCancel) loadCancelList();
+  document.getElementById('repairKindSection').classList.toggle('hide', a !== '修理');
   // 配車は届けに行く操作なので、今どこにあるかは聞かない
   document.getElementById('locationSection').classList.toggle('hide',
     a === '配車' || a === 'キャンセル');
@@ -683,7 +708,7 @@ async function submitForm() {
   const payload = {
     key:              '3155',
     vehicle_id:       selectedVehicleId,
-    action:           selectedAction,
+    action:           selectedAction === '修理' ? selectedKind : selectedAction,
     start_date:       document.getElementById('startDate').value || null,
     end_date:         document.getElementById('endDate').value   || null,
     client:           document.getElementById('client').value.trim(),
@@ -756,6 +781,11 @@ function resetForm() {
   document.getElementById('resvStartDate').value = '';
   document.getElementById('resvEndDate').value = '';
   document.getElementById('otherCarType').value = '';
+  selectedKind = '修理';
+  ['修理', '点検', '車検'].forEach(k => {
+    const b = document.getElementById('kind-' + k);
+    if (b) b.classList.remove('selected');
+  });
   document.getElementById('rentalOtherWrap').classList.add('hide');
   document.getElementById('location').value = '';
   document.getElementById('washed').checked = false;
