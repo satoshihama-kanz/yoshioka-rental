@@ -784,8 +784,27 @@ _SALES_VEHICLES = [
     (  '1027', 'ﾉｰﾄ(営業車)'  , '普通車', '503と1027', '2028-04-20'),
 ]
 
-_SALES_STAFF = ['市川久登', '山本友造', '則本拓哉', '堀末栄次',
+_SALES_STAFF = ['市川久登', '山本友造', '則本拓哉', '堀木栄次',
                 '山田浩子', '冨田大介', '山本拓馬']
+
+# 投入済みマスタへの氏名訂正（手書き名簿の読み取り誤りの修正）。一度だけ適用する
+_SALES_STAFF_FIXES = [('堀末栄次', '堀木栄次')]
+
+def _fix_sales_staff_names(c):
+    """既に投入済みの社員名を訂正する。
+    マスタ再投入は行わないので、登録済みのイベントは失われない。"""
+    if c.execute("SELECT value FROM settings WHERE key='sales_staff_fix_v1'").fetchone():
+        return 0
+    n = 0
+    for old, new in _SALES_STAFF_FIXES:
+        n += c.execute("UPDATE staff SET name=? WHERE name=? AND department='sales'",
+                       (new, old)).rowcount
+        # 既に登録された配車・予約の担当者名も合わせて直す
+        c.execute("""UPDATE events SET staff=? WHERE staff=? AND vehicle_id IN
+                     (SELECT id FROM vehicles WHERE department='sales')""", (new, old))
+    c.execute("INSERT OR REPLACE INTO settings (key,value) VALUES ('sales_staff_fix_v1',?)",
+              (datetime.now(JST).strftime('%Y-%m-%d %H:%M:%S'),))
+    return n
 
 def _load_sales_master(c):
     """セールス部門の車両・社員マスタを投入する。
@@ -940,6 +959,10 @@ def init_db():
         conn.commit()
         if n:
             app.logger.warning(f'[sales] セールス部門のマスタを投入しました: {n}台')
+        f = _fix_sales_staff_names(c)
+        conn.commit()
+        if f:
+            app.logger.warning(f'[sales] 社員名を訂正しました: {f}件')
     except Exception as e:
         app.logger.warning(f'[sales] マスタ投入に失敗: {e}')
 
