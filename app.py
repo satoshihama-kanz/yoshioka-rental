@@ -728,125 +728,92 @@ def _seed_clients(c):
                   (reading, name))
 
 # ══════════════════════════════════════════════════════════
-# ⚠️ セールス部門 仮稼働用ダミーデータ（本物の30台リスト受領後に削除する）
-#   ・_SALES_DEMO_* と _seed_sales_demo() と init_db 内の呼び出し1行を消せば撤去できる
-#   ・投入は一度きり（settings の sales_demo_seeded で管理）。画面から消しても復活しない
-#   ・撤去用API: POST /api/admin/clear-sales
+# セールス部門 車両・社員マスタ（先方提供資料より）
+#   出典: 「軽自動車　代車リスト」17台（内営業車2台）
+#         「普通車代車リスト」28台（内営業車1台）
+#         手書きの社員名簿 7名
+#   車検日は資料の和暦（令和）を西暦へ変換。車種名は既存の表記に合わせ半角カナ。
+#   車番は車両番号の一連番号部分。地域（京都/滋賀）は資料に記載がないため未設定。
 # ══════════════════════════════════════════════════════════
-_SALES_DEMO_STAFF = ['岡田 涼太', '西村 綾', '森本 大輔', '中井 千夏',
-                     '山下 拓也', '藤原 みなみ', '高橋 誠', '小川 由紀']
-
-# (車番, 車種, 区分, 地域)
-_SALES_DEMO_VEHICLES = [
-    ('8001', 'ﾊｽﾗｰ',      '軽自動車', '京都'), ('8002', 'ﾀﾝﾄ',       '軽自動車', '京都'),
-    ('8003', 'N-BOX',     '軽自動車', '京都'), ('8004', 'ﾜｺﾞﾝR',     '軽自動車', '京都'),
-    ('8005', 'ﾐﾗｲｰｽ',    '軽自動車', '京都'), ('8006', 'ｱﾙﾄ',       '軽自動車', '京都'),
-    ('8007', 'ﾑｰｳﾞ',      '軽自動車', '京都'), ('8008', 'ｽﾍﾟｰｼｱ',   '軽自動車', '京都'),
-    ('8009', 'ﾌｨｯﾄ',      '普通車',   '京都'), ('8010', 'ﾔﾘｽ',       '普通車',   '京都'),
-    ('8011', 'ﾉｰﾄ',       '普通車',   '京都'), ('8012', 'ｱｸｱ',       '普通車',   '京都'),
-    ('8013', 'ﾙｰﾐｰ',      '普通車',   '京都'), ('8014', 'ｼｴﾝﾀ',      'ﾜﾝﾎﾞｯｸｽ', '京都'),
-    ('8015', 'ADﾊﾞﾝ',     '商用車',   '京都'),
-    ('8016', 'ﾊｽﾗｰ',      '軽自動車', '滋賀'), ('8017', 'ﾀﾝﾄ',       '軽自動車', '滋賀'),
-    ('8018', 'N-BOX',     '軽自動車', '滋賀'), ('8019', 'ﾜｺﾞﾝR',     '軽自動車', '滋賀'),
-    ('8020', 'ﾐﾗｲｰｽ',    '軽自動車', '滋賀'), ('8021', 'ｱﾙﾄ',       '軽自動車', '滋賀'),
-    ('8022', 'ﾑｰｳﾞ',      '軽自動車', '滋賀'), ('8023', 'ﾃﾞｲｽﾞ',     '軽自動車', '滋賀'),
-    ('8024', 'ﾌｨｯﾄ',      '普通車',   '滋賀'), ('8025', 'ﾔﾘｽ',       '普通車',   '滋賀'),
-    ('8026', 'ﾉｰﾄ',       '普通車',   '滋賀'), ('8027', 'ｱｸｱ',       '普通車',   '滋賀'),
-    ('8028', 'ﾀﾝｸ',       '普通車',   '滋賀'), ('8029', 'ﾌﾘｰﾄﾞ',     'ﾜﾝﾎﾞｯｸｽ', '滋賀'),
-    ('8030', 'ﾊｲｾﾞｯﾄ',    '商用車',   '滋賀'),
+# (車番, 車種, 区分, 車両番号, 車検満了日)
+_SALES_VEHICLES = [
+    (  '1680', 'ｱﾙﾄ'          , '軽自動車', '582て1680', '2026-06-16'),
+    (  '1681', 'ｱﾙﾄ'          , '軽自動車', '582て1681', '2028-07-02'),
+    (  '5031', 'ekﾜｺﾞﾝ'       , '軽自動車', '582に5031', '2028-06-22'),
+    (  '8544', 'ekﾜｺﾞﾝ'       , '軽自動車', '582な8544', '2028-04-02'),
+    (  '8158', 'ｵｯﾃｨｰ'        , '軽自動車', '582つ8158', '2027-04-21'),
+    (  '8974', 'ｸﾘｯﾊﾟｰﾊﾞﾝ'    , '軽自動車', '480み8974', '2026-12-20'),
+    (  '2739', 'ﾀﾝﾄ'          , '軽自動車', '581め2739', '2026-10-06'),
+    (  '7850', 'ﾃﾞｲｽﾞ(営業車)', '軽自動車', '582と7850', '2027-09-26'),
+    (  '2718', 'ﾃﾞｲｽﾞ'        , '軽自動車', '582き2718', '2027-05-19'),
+    (  '7501', 'ﾑｰｳﾞ'         , '軽自動車', '582う7501', '2027-12-24'),
+    (  '1097', 'ﾗﾊﾟﾝ(営業車)'  , '軽自動車', '582な1097', '2028-02-17'),
+    (  '2406', 'ﾜｺﾞﾝR'        , '軽自動車', '582な2406', '2028-07-28'),
+    (  '6174', 'ﾜｺﾞﾝR'        , '軽自動車', '580ふ6174', '2028-02-18'),
+    (  '9485', 'ﾜｺﾞﾝR'        , '軽自動車', '582と9485', '2026-10-02'),
+    (  '9672', 'ﾜｺﾞﾝRｽﾃｨﾝｸﾞﾚｰ', '軽自動車', '582ち9672', '2026-09-25'),
+    (  '1430', 'ﾀﾝﾄ'          , '軽自動車', '582う1430', '2027-12-10'),
+    (  '4295', 'ﾙｰｸｽ'         , '軽自動車', '582ぬ4295', '2028-02-13'),
+    (  '5611', 'ADﾊﾞﾝ'        , '普通車', '400は5611', '2027-11-03'),
+    (  '3638', 'ADﾊﾞﾝ'        , '普通車', '400は3638', '2026-06-29'),
+    (  '5034', 'ｱｲｼｽ'         , '普通車', '301も5034', '2027-04-22'),
+    (   '739', 'ｲﾝｻｲﾄ'        , '普通車', '503つ739' , '2028-08-17'),
+    (  '6619', 'ｳｨｯｼｭ'        , '普通車', '302に6619', '2028-04-07'),
+    (  '8357', 'ｳﾞｨｯﾂ'        , '普通車', '503つ8357', '2027-06-22'),
+    (  '1103', 'ｳﾞｨｯﾂ'        , '普通車', '543も1103', '2026-09-26'),
+    (  '3679', 'ｻｸｼｰﾄﾞ'       , '普通車', '400は3679', '2027-05-13'),
+    (   '207', 'ｼｴﾝﾀ'         , '普通車', '502す207' , '2026-10-19'),
+    (  '4448', 'ｼﾙﾌｨｰ'        , '普通車', '302み4448', '2027-03-15'),
+    (  '1571', 'ｽﾃｯﾌﾟﾜｺﾞﾝ'    , '普通車', '503そ1571', '2026-09-09'),
+    (   '463', 'ﾃｨｰﾀﾞ'        , '普通車', '530そ463' , '2028-05-28'),
+    (  '5072', 'ﾃﾞﾐｵ'         , '普通車', '503ち5072', '2026-11-19'),
+    (  '6698', 'ﾉｰﾄ'          , '普通車', '502ふ6698', '2027-01-27'),
+    (  '1732', 'ﾌﾟﾘｳｽ'        , '普通車', '302せ1732', '2028-04-08'),
+    (    '12', 'ﾊﾟｯｿ'         , '普通車', '549せ12'  , '2027-06-04'),
+    (  '2509', 'ﾊﾟｯｿ'         , '普通車', '502み2509', '2028-07-22'),
+    (  '3636', 'ﾊﾟｯｿ'         , '普通車', '537は3636', '2026-09-03'),
+    (  '1718', 'ﾊﾟｯｿ'         , '普通車', '533ら1718', '2026-08-27'),
+    (  '2637', 'ﾊﾟｯｿ'         , '普通車', '530な2637', '2027-03-06'),
+    (  '2525', 'ﾊﾟｯｿ'         , '普通車', '568み2525', '2026-07-16'),
+    (   '358', 'bB'           , '普通車', '552て358' , '2027-04-29'),
+    (  '9529', 'ﾎﾟﾙﾃ'         , '普通車', '502ま9529', '2028-03-03'),
+    (  '1103', 'ﾌﾟﾛﾎﾞｯｸｽ'     , '普通車', '400ぬ1103', '2027-02-02'),
+    (  '3131', 'ﾍﾞﾙﾀ'         , '普通車', '531む3131', '2027-07-27'),
+    (  '9468', 'ﾏｰﾁ'          , '普通車', '503つ9468', '2027-10-27'),
+    (  '6217', 'ｾﾚﾅ'          , '普通車', '503て6217', '2027-03-14'),
+    (  '1027', 'ﾉｰﾄ(営業車)'  , '普通車', '503と1027', '2028-04-20'),
 ]
 
-# (車番, 状態, 開始日オフセット, 終了日オフセット or None, 担当, 顧客, 適用)
-_SALES_DEMO_EVENTS = [
-    ('8001', '貸出中', -4,  6,   '岡田 涼太',   'ｻﾝﾌﾟﾙ自動車',   '車検'),
-    ('8003', '貸出中', -2,  12,  '西村 綾',     'ﾃｽﾄ工業',       '一般修理'),
-    ('8005', '貸出中', -17, 3,   '森本 大輔',   'ﾃﾞﾓﾓｰﾀｰｽ',     '一般修理'),   # 15日超（赤字）
-    ('8009', '貸出中', -1,  20,  '中井 千夏',   'ｻﾝﾌﾟﾙ商会',     '新規新車'),
-    ('8016', '貸出中', -6,  8,   '山下 拓也',   'ﾃｽﾄ運輸',       '点検'),
-    ('8018', '貸出中', -3,  4,   '藤原 みなみ', 'ｻﾝﾌﾟﾙ建設',     '車検'),
-    ('8024', '貸出中', -23, 2,   '高橋 誠',     'ﾃﾞﾓ商事',       '乗り換え新車'),  # 15日超（赤字）
-    ('8026', '貸出中', -5,  15,  '小川 由紀',   'ｻﾝﾌﾟﾙ電機',     '新規新車'),
-    ('8002', '予約済', 2,   9,   '岡田 涼太',   'ﾃｽﾄ自動車販売', '車検'),
-    ('8010', '予約済', 5,   11,  '中井 千夏',   'ｻﾝﾌﾟﾙ興業',     '乗り換え新車'),
-    ('8019', '予約済', 1,   6,   '山下 拓也',   'ﾃﾞﾓ物産',       '点検'),
-    ('8027', '予約済', 7,   14,  '高橋 誠',     'ﾃｽﾄ産業',       '一般修理'),
-    ('8007', '修理中', -3,  4,   '森本 大輔',   '',              ''),
-    ('8022', '修理中', -1,  6,   '藤原 みなみ', '',              ''),
-    ('8013', '点検中', 0,   1,   '西村 綾',     '',              ''),
-    ('8029', '車検中', -2,  2,   '小川 由紀',   '',              ''),
-]
+_SALES_STAFF = ['市川久登', '山本友造', '則本拓哉', '堀末栄次',
+                '山田浩子', '冨田大介', '山本拓馬']
 
-def _demo_insp_offset(i):
-    """デモ車両の車検満了日を散らす（一部は2ヶ月以内で赤字警告になる）"""
-    return 25 + (i * 11) % 320
-
-def _refresh_sales_demo(c):
-    """デモの日付を今日基準に振り直す。
-    デプロイのたびに実行し、経過日数や予約がいつ見ても自然に見えるようにする。
-    社員が入力した本物のイベント（notes が 'デモデータ' 以外）には触れない。"""
-    row = c.execute("SELECT value FROM settings WHERE key='sales_demo_seeded'").fetchone()
-    if not row or row[0] == 'skipped':
-        return 0
-    base = datetime.strptime(today_jst(), '%Y-%m-%d')
-    off  = lambda n: (base + timedelta(days=n)).strftime('%Y-%m-%d')
-    n = 0
-    for num, status, s_off, e_off, staff, client, cat in _SALES_DEMO_EVENTS:
-        n += c.execute(
-            """UPDATE events SET start_date=?, end_date=?
-               WHERE notes='デモデータ' AND vehicle_id IN
-                 (SELECT id FROM vehicles WHERE number=? AND department='sales')""",
-            (off(s_off), off(e_off) if e_off is not None else None, num)).rowcount
-    for i, (num, _ctype, _cat, _region) in enumerate(_SALES_DEMO_VEHICLES):
-        c.execute("UPDATE vehicles SET inspection_date=? WHERE number=? AND department='sales'",
-                  (off(_demo_insp_offset(i)), num))
-    return n
-
-def _seed_sales_demo(c):
-    """セールス部門の仮稼働用ダミーデータを一度だけ投入する"""
-    if c.execute("SELECT value FROM settings WHERE key='sales_demo_seeded'").fetchone():
-        return 0
-    if c.execute("SELECT COUNT(*) FROM vehicles WHERE department='sales'").fetchone()[0] > 0:
-        # 既に本物のデータが入っているなら何もしない
-        c.execute("INSERT OR REPLACE INTO settings (key,value) VALUES ('sales_demo_seeded','skipped')")
+def _load_sales_master(c):
+    """セールス部門の車両・社員マスタを投入する。
+    仮稼働用のダミーデータが残っていれば、それを撤去してから入れ替える。
+    投入済み（settings の sales_master_v1）なら何もしないので、
+    画面から車両を消してもデプロイで復活することはない。"""
+    if c.execute("SELECT value FROM settings WHERE key='sales_master_v1'").fetchone():
         return 0
 
-    now  = datetime.now(JST).strftime('%Y-%m-%d %H:%M:%S')
-    base = datetime.strptime(today_jst(), '%Y-%m-%d')
-    off  = lambda n: (base + timedelta(days=n)).strftime('%Y-%m-%d')
+    # ダミーデータの撤去（レンタカー事業部には一切触れない）
+    c.execute('''DELETE FROM events WHERE vehicle_id IN
+                 (SELECT id FROM vehicles WHERE department='sales')''')
+    c.execute("DELETE FROM vehicles WHERE department='sales'")
+    c.execute("DELETE FROM staff   WHERE department='sales'")
 
-    for name in _SALES_DEMO_STAFF:
+    for name in _SALES_STAFF:
         c.execute("INSERT OR IGNORE INTO staff (name, department) VALUES (?, 'sales')", (name,))
 
-    ids = {}
-    for i, (num, ctype, cat, region) in enumerate(_SALES_DEMO_VEHICLES):
+    for num, ctype, cat, plate, insp in _SALES_VEHICLES:
         max_id = c.execute('SELECT MAX(id) FROM vehicles').fetchone()[0] or 0
-        vid = max_id + 1
         c.execute('''INSERT INTO vehicles
             (id,number,car_type,year,full_number,inspection_date,region,car_category,department)
-            VALUES (?,?,?,?,?,?,?,?,'sales')''',
-            (vid, num, ctype, '', f'{region}500ｻ {num}', off(_demo_insp_offset(i)), region, cat))
-        ids[num] = vid
+            VALUES (?,?,?,'',?,?,'',?,'sales')''',
+            (max_id + 1, num, ctype, plate, insp, cat))
 
-    # 全車にまず在庫イベント（「状態未登録」を出さないため）
-    for num, vid in ids.items():
-        c.execute('''INSERT INTO events
-            (vehicle_id,status,start_date,end_date,staff,client,category,notes,created_at,location,washed,interior_cleaned)
-            VALUES (?,'在庫',?,NULL,'','','','',?,?,1,?)''',
-            (vid, off(-30), now, '京都本社' if ids[num] % 2 else '滋賀支店', 1 if vid % 3 == 0 else 0))
-
-    # 稼働中・予約・整備を上書き（created_at が新しいほど優先される）
-    for num, status, s_off, e_off, staff, client, cat in _SALES_DEMO_EVENTS:
-        vid = ids.get(num)
-        if not vid:
-            continue
-        c.execute('''INSERT INTO events
-            (vehicle_id,status,start_date,end_date,staff,client,category,notes,created_at)
-            VALUES (?,?,?,?,?,?,?,?,?)''',
-            (vid, status, off(s_off), off(e_off) if e_off is not None else None,
-             staff, client, cat, 'デモデータ', now))
-
-    c.execute("INSERT OR REPLACE INTO settings (key,value) VALUES ('sales_demo_seeded',?)", (now,))
-    return len(ids)
+    c.execute("INSERT OR REPLACE INTO settings (key,value) VALUES ('sales_master_v1',?)",
+              (datetime.now(JST).strftime('%Y-%m-%d %H:%M:%S'),))
+    return len(_SALES_VEHICLES)
 
 # ── DB ─────────────────────────────────────────────────────
 def get_db():
@@ -967,20 +934,14 @@ def init_db():
             pass
     conn.commit()
 
-    # ⚠️ セールス部門の仮稼働用ダミーデータ（本物のリスト受領後にこのブロックを削除）
+    # セールス部門の車両・社員マスタ（先方提供資料）。仮稼働のダミーはここで置き換わる
     try:
-        n = _seed_sales_demo(c)
+        n = _load_sales_master(c)
         conn.commit()
         if n:
-            app.logger.warning(f'[demo] セールス部門のダミーデータを投入しました: {n}台')
-        else:
-            # 投入済みならデプロイのたびに日付だけ今日基準へ振り直す
-            m = _refresh_sales_demo(c)
-            conn.commit()
-            if m:
-                app.logger.warning(f'[demo] ダミーの日付を更新しました: {m}件')
+            app.logger.warning(f'[sales] セールス部門のマスタを投入しました: {n}台')
     except Exception as e:
-        app.logger.warning(f'[demo] ダミーデータ処理に失敗: {e}')
+        app.logger.warning(f'[sales] マスタ投入に失敗: {e}')
 
     base = os.path.dirname(__file__)
     if c.execute('SELECT COUNT(*) FROM vehicles').fetchone()[0] == 0:
