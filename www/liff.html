@@ -216,7 +216,7 @@ body.dept-sales .action-btn.selected{border-color:#4a3410;background:#4a3410}
   <div class="section" id="staffSection">
     <div class="section-title">👤 担当者</div>
     <div class="form-row">
-      <label>社員を選択</label>
+      <label>一覧から選ぶ</label>
       <select id="staffSelect" onchange="staffChanged()">
         <option value="">選択してください</option>
         <optgroup label="京都">
@@ -233,12 +233,11 @@ body.dept-sales .action-btn.selected{border-color:#4a3410;background:#4a3410}
           <option value="川上那歩">川上那歩</option>
           <option value="田中奈々実">田中奈々実</option>
         </optgroup>
-        <option value="__other__">その他（直接入力）</option>
       </select>
     </div>
-    <div class="form-row hide" id="staffInputWrap">
-      <label>担当者名を入力</label>
-      <input type="text" id="staffInput" placeholder="担当者名">
+    <div class="form-row" id="staffInputWrap">
+      <label>または直接入力</label>
+      <input type="text" id="staffInput" placeholder="一覧に無い名前はここに入力" oninput="staffTyped()">
     </div>
   </div>
 
@@ -387,9 +386,6 @@ async function loadStaffOptions() {
       sel.appendChild(o);
     });
   } catch (e) { /* 取得失敗時は直接入力のみ */ }
-  const other = document.createElement('option');
-  other.value = '__other__'; other.textContent = 'その他（直接入力）';
-  sel.appendChild(other);
   staffChanged();
   buildInputterOptions();
 }
@@ -610,9 +606,16 @@ function updateSections() {
 
 // 担当選択
 function staffChanged() {
+  // 一覧で選んだ名前を入力欄に写す（入力欄が担当者の正）
   const sel = document.getElementById('staffSelect').value;
-  const wrap = document.getElementById('staffInputWrap');
-  wrap.classList.toggle('hide', sel !== '__other__');
+  if (sel) document.getElementById('staffInput').value = sel;
+}
+
+// 直接入力したら、一覧の選択も名前に合わせる（一致しなければ未選択に戻す）
+function staffTyped() {
+  const name = document.getElementById('staffInput').value.trim();
+  const sel = document.getElementById('staffSelect');
+  sel.value = [...sel.options].some(o => o.value === name) ? name : '';
 }
 
 // ── 入力者 ─────────────────────────────────────
@@ -689,9 +692,8 @@ function escHtml(t) {
 }
 
 function getStaff() {
-  const sel = document.getElementById('staffSelect').value;
-  if (sel === '__other__') return document.getElementById('staffInput').value.trim();
-  return sel;
+  return document.getElementById('staffInput').value.trim()
+      || document.getElementById('staffSelect').value;
 }
 
 let selectedCancelEventId = null;
@@ -739,19 +741,10 @@ function fillFromEvent(ev) {
   setStaff(ev.staff || '');
 }
 
-// 担当プルダウンに無い名前は「その他」に入れる
+// 担当者を入れる。一覧に無い名前でも入力欄にはそのまま入る
 function setStaff(name) {
-  const sel = document.getElementById('staffSelect');
-  const has = [...sel.options].some(o => o.value === name);
-  if (name && has) {
-    sel.value = name;
-  } else if (name) {
-    sel.value = '__other__';
-    document.getElementById('staffInput').value = name;
-  } else {
-    sel.value = '';
-  }
-  staffChanged();
+  document.getElementById('staffInput').value = name || '';
+  staffTyped();
 }
 
 // 登録後にLINEの画面へ戻す。LIFFとして開かれていれば閉じられる。
@@ -886,7 +879,6 @@ function resetForm() {
   document.getElementById('category').value = '';
   document.getElementById('staffSelect').value = '';
   document.getElementById('staffInput').value = '';
-  document.getElementById('staffInputWrap').classList.add('hide');
   document.getElementById('mileage').value = '';
   document.getElementById('notes').value   = '';
   document.getElementById('endDate').value = '';
