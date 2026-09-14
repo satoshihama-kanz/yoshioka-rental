@@ -407,7 +407,7 @@ function renderCalendar() {
 
     const regionOrder = r => r === '京都' ? 0 : r === '滋賀' ? 1 : 2;
     const sortedVehicles = [...filteredVehicles].sort((a, b) => {
-        const ra = regionOrder(a.region), rb = regionOrder(b.region);
+        const ra = regionOrder(a.current_region), rb = regionOrder(b.current_region);
         if (sortKey === 'status') {
             const sa = getVehicleStatusOnDate(a.id, todayStr).status;
             const sb = getVehicleStatusOnDate(b.id, todayStr).status;
@@ -427,8 +427,8 @@ function renderCalendar() {
 
     sortedVehicles.forEach(v => {
         html += `<tr>`;
-        const regionChar = v.region === '京都' ? '<span style="font-size:9px;color:#1565C0;font-weight:bold;">京</span>' :
-                           v.region === '滋賀' ? '<span style="font-size:9px;color:#2E7D32;font-weight:bold;">滋</span>' : '';
+        const regionChar = v.current_region === '京都' ? '<span style="font-size:9px;color:#1565C0;font-weight:bold;">京</span>' :
+                           v.current_region === '滋賀' ? '<span style="font-size:9px;color:#2E7D32;font-weight:bold;">滋</span>' : '';
         html += `<td class="cal-vehicle-col" onclick="openDetail(${v.id})" style="cursor:pointer;">
             ${regionChar}${v.car_category ? `<span class="cal-cat">${v.car_category}</span>` : ''}
             <span class="cal-vehicle-num">${v.number}</span>
@@ -463,9 +463,9 @@ function renderStockTable(todayStr, regionFilter) {
     const _ro = r => r === '京都' ? 0 : r === '滋賀' ? 1 : 2;
     const stockVehicles = filteredVehicles
         .filter(v => getVehicleStatusOnDate(v.id, todayStr).status === '在庫'
-                  && (!regionFilter || v.region === regionFilter))
+                  && (!regionFilter || v.current_region === regionFilter))
         .sort((a, b) => {
-            const rd = _ro(a.region) - _ro(b.region);
+            const rd = _ro(a.current_region) - _ro(b.current_region);
             if (rd !== 0) return rd;
             const ca = a.car_type || '', cb = b.car_type || '';
             return ca !== cb ? ca.localeCompare(cb) : a.number.localeCompare(b.number);
@@ -979,7 +979,8 @@ async function loadMorningPreview() {
         const j = await r.json();
         morningBlocks = j.blocks || [];
         renderMorningBlocks();
-        info.textContent = j.message.length + '文字';
+        const msgs = j.messages || [{ region: '', text: j.message }];
+        info.textContent = msgs.map(m => `${m.region} ${m.text.length}字`).join('／') + `（${msgs.length}通）`;
     } catch (e) {
         box.textContent = '❌ 取得に失敗しました';
     }
@@ -991,6 +992,8 @@ function renderMorningBlocks() {
     const box = document.getElementById('morningText');
     box.innerHTML = morningBlocks.map((b, i) => {
         if (b.type === 'blank') return '<div style="height:8px;"></div>';
+        // 京都・滋賀は別々に配信されるので、プレビューでも区切って見せる
+        if (b.type === 'split') return `<div class="mp-split">✂ ここで分けて配信（${esc(b.text)}）</div>`;
         if (b.type === 'item') {
             const sub = b.sub ? `<div style="font-size:11px;color:#666;">${esc(b.sub)}</div>` : '';
             return `<div class="mp-item" onclick="openMorningRowMenu(${i})">`
@@ -1064,14 +1067,15 @@ window.addEventListener('focus', async () => {
 });
 
 async function sendMorningNow() {
-    if (!confirm('この内容でグループLINEに送信します。よろしいですか？')) return;
+    if (!confirm('京都分と滋賀分に分けて、グループLINEに送信します。よろしいですか？')) return;
     try {
         const r = await fetch('/api/morning-report/send', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ date: document.getElementById('morningDate').value })
         });
-        alert(r.ok ? '✅ 送信しました' : '❌ 送信に失敗しました');
+        const j = r.ok ? await r.json() : {};
+        alert(r.ok ? `✅ ${j.count || ''}通に分けて送信しました` : '❌ 送信に失敗しました');
         if (r.ok) closeMorningPreview();
     } catch (e) {
         alert('❌ 通信エラー');

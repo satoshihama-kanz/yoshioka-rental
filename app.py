@@ -1163,7 +1163,10 @@ def register_event(v, status, state):
     else:
         washed = interior_cleaned = 0
 
+    deliver_to = (state.get('deliver_to') or '').strip()
     notes_parts = []
+    if deliver_to:
+        notes_parts.append(f"搬送先:{deliver_to}")
     if mileage:
         notes_parts.append(f"走行距離:{mileage}km")
     if location:
@@ -1238,7 +1241,7 @@ def register_event(v, status, state):
     msg = _build_line_msg(
         v['number'], v.get('car_type', ''), status, staff, client or prev_client,
         start_d, end_d, category, tentative=state.get('tentative'),
-        mileage=mileage, remarks=remarks
+        mileage=mileage, remarks=remarks, deliver_to=deliver_to
     )
     if consumed_n:
         msg += f'\n（予約{consumed_n}件を配車に切り替えました）'
@@ -1753,6 +1756,14 @@ def api_vehicles():
         rows = [dict(r) for r in conn.execute(
             'SELECT * FROM vehicles ORDER BY CAST(number AS INTEGER)').fetchall()]
     conn.close()
+    # 画面の京都／滋賀の区分も、朝一ラインと同じ「今どこにあるか」で出す
+    locs = {}
+    for dp in ({(r.get('department') or DEFAULT_DEPT) for r in rows} or {DEFAULT_DEPT}):
+        locs.update(current_locations(today_jst(), dept=dp))
+    for r in rows:
+        loc = locs.get(r['id'], '')
+        r['current_location'] = loc
+        r['current_region'] = branch_region(loc) or ''
     return jsonify(rows)
 
 @app.route('/api/clients', methods=['GET'])
@@ -1854,7 +1865,7 @@ def _resv_tail(staff, client, start_d, category, tentative=False):
     return head + ('\n' + body if body else '')
 
 def _build_line_msg(num, car_type, status, staff, client, start_d, end_d, category,
-                    tentative=False, mileage='', remarks=''):
+                    tentative=False, mileage='', remarks='', deliver_to=''):
     """グループLINEに流す共有メッセージ。
 
       310 ｾﾚﾅ　予約          310 ｾﾚﾅ　配車
@@ -1873,12 +1884,27 @@ def _build_line_msg(num, car_type, status, staff, client, start_d, end_d, catego
         if staff: lines.append(staff)
     else:
         if client: lines.append(client)
+        if deliver_to: lines.append(f'搬送先 {deliver_to}')
         if mileage: lines.append(f'{mileage}ｷﾛ')
         if act in ('修理', '車検', '点検') and staff:
             lines.append(staff)
     if remarks:
         lines.append(remarks)
     return '\n'.join(lines)
+
+def _surname(name):
+    """氏名から苗字を取り出す。空白があれば前半、無ければ先頭2文字。"""
+    name = (name or '').strip().replace('\u3000', ' ')
+    if not name:
+        return ''
+    if ' ' in name:
+        return name.split(' ', 1)[0]
+    return name[:2]
+
+def _sign(msg, inputter):
+    """共有メッセージの末尾に「（by 苗字）」を付ける"""
+    sn = _surname(inputter)
+    return f'{msg}\n（by {sn}）' if sn else msg
 
 def _event_summary_line(d, conn):
     """イベントのサマリ文字列を生成してグループLINEに送信"""
@@ -1987,15 +2013,17 @@ def _period_label(ev):
 def _clean_note(ev):
     """営業が入力した備考のみ返す（システム由来の文言は除外）"""
     note = ((ev or {}).get('notes') or '').strip()
-    if note.startswith('所在地:') or note.startswith('エクセル取込'):
+    if note.startswith(('所在地:', 'エクセル取込', '搬送先:', '走行距離:')):
         return ''
     return note
 
-# 所在地の呼び名から担当支店を割り出す。管理表のQ列にはこの名前が入る。
+# 所在地の呼び名から担当支店を割り出す。入力フォームや管理表の所在地にはこの名前が入る。
 _BRANCH_REGION = {
     '東舞鶴店': '京都', '西舞鶴店': '京都', '峰山店': '京都',
     'P滋賀栗東': '滋賀', 'トヨタ水口泉': '滋賀',
 }
+REGIONS = ('京都', '滋賀')
+NO_REGION = '所在地未入力'
 
 def branch_region(loc):
     """所在地の文字列から京都／滋賀を判定する。分からなければ None。"""
@@ -2006,30 +2034,44 @@ def branch_region(loc):
     if '京都' in loc: return '京都'
     return _BRANCH_REGION.get(loc)
 
-def vehicle_region(v, ev=None):
-    """車両が「今どこにあるか」。入力された所在地を最優先し、
-    無ければ車両マスタの所在地を使う。朝一ラインはこの区分で分ける。"""
-    r = branch_region((ev or {}).get('location'))
-    if r:
-        return r
-    r = v.get('region')
-    return r if r in ('京都', '滋賀') else '京都'
+def current_locations(date=None, dept=DEFAULT_DEPT):
+    """各車両の「今どこにあるか」を返す {vehicle_id: 所在地}。
 
-def _place_label(ev):
+    車両マスタの初期登録地は使わない。返却などで入力された所在地のうち、
+    対象日までで最も新しいものを採用する（予約や配車は所在地を持たないため、
+    その前に入力された場所がそのまま引き継がれる）。
+    """
+    d = date or today_jst()
+    conn = get_db()
+    rows = conn.execute(
+        """SELECT e.vehicle_id, e.location FROM events e
+           JOIN vehicles v ON e.vehicle_id = v.id
+           WHERE v.department = ? AND COALESCE(e.location,'') <> ''
+             AND COALESCE(e.start_date,'') <= ?
+           ORDER BY e.start_date DESC, e.created_at DESC, e.id DESC""",
+        (dept, d)).fetchall()
+    conn.close()
+    out = {}
+    for r in rows:
+        out.setdefault(r['vehicle_id'], r['location'].strip())
+    return out
+
+def vehicle_region(v, loc_map):
+    """朝一ラインの振り分け先。所在地が分からない車は「所在地未入力」。"""
+    return branch_region(loc_map.get(v['id'])) or NO_REGION
+
+def _place_label(loc):
     """支店名そのものではない所在地（自社工場など）を朝一ラインに添える"""
-    loc = ((ev or {}).get('location') or '').strip()
+    loc = (loc or '').strip()
     if not loc or loc in ('京都本社', '滋賀支店'):
         return ''
     return f'（{loc}）'
 
-# ① 朝一ラインに載せる「先の予約」の範囲
+# 朝一ラインに載せる「先の予約」の範囲
 _UPCOMING_DAYS = 14
 
 def upcoming_events(date, dept=DEFAULT_DEPT, days=_UPCOMING_DAYS):
-    """対象日より先に始まる予定を車両ごとに返す（開始日の近い順）。
-
-    在庫車でも「いつまで貸せるか」を朝一ラインで伝えるために使う。
-    """
+    """対象日より先に始まる予定を車両ごとに返す（開始日の近い順）。"""
     d_end = (datetime.strptime(date, '%Y-%m-%d') + timedelta(days=days)).strftime('%Y-%m-%d')
     conn = get_db()
     rows = conn.execute(
@@ -2039,7 +2081,6 @@ def upcoming_events(date, dept=DEFAULT_DEPT, days=_UPCOMING_DAYS):
            ORDER BY e.start_date, e.created_at DESC, e.id DESC""", (dept, date, d_end)).fetchall()
     conn.close()
     # 同じ車の同じ日に複数の登録があれば、いちばん新しいものだけを残す
-    # （画面側の判定と同じ規則。重複登録がそのまま並ぶのを防ぐ）
     seen = set()
     out = {}
     for r in rows:
@@ -2106,52 +2147,56 @@ def blocks_to_text(blocks):
     """プレビュー用の構造化ブロックから一斉ライン本文を組み立てる"""
     out = []
     for b in blocks:
+        if b['type'] == 'split':
+            continue
         if b['type'] == 'blank':
             out.append('')
             continue
         out.append(b['text'])
         if b.get('sub'):
             out.append(b['sub'])
-    return '\n'.join(out)
+    return '\n'.join(out).strip('\n')
 
-def build_morning_blocks(date=None):
-    """朝一の一斉ラインを構造化ブロックで返す。
-
-    プレビュー画面から車両を直接選んで編集・削除できるよう、
-    明細行には vehicle_id / event_id を持たせる。本文はここから生成するので、
-    画面表示と実際に送られる文面が食い違うことはない。
-    """
-    d = date or today_jst()
-    states = resolve_vehicle_states(d, dept='rental')
-
+def _collect_morning(d):
+    """朝一ラインの材料を所在地ごとに振り分ける。"""
+    states   = resolve_vehicle_states(d, dept='rental')
     upcoming = upcoming_events(d, dept='rental')
+    loc_map  = current_locations(d, dept='rental')
 
-    stock = {'京都': [], '滋賀': []}
-    resv  = {'京都': {}, '滋賀': {}}
-    maint = {'京都': [], '滋賀': []}
-    ahead = {'京都': {}, '滋賀': {}}
+    keys  = REGIONS + (NO_REGION,)
+    stock = {k: [] for k in keys}
+    resv  = {k: {} for k in keys}
+    ahead = {k: {} for k in keys}
+    maint = {k: [] for k in keys}
     unknown = []
     for st in states:
         v, ev, status = st['vehicle'], st['event'], st['status']
-        # 「その車が今どこにあるか」で分ける。担当者の所属では分けない
-        region = vehicle_region(v, ev)
+        region = vehicle_region(v, loc_map)
+        nexts  = upcoming.get(v['id'], [])
+        has_future_resv = any(x.get('status') == '予約済' for x in nexts)
+
         if ev is None and not st.get('has_any'):
-            # 一度も状態登録がない車両だけを別枠にする。
-            # 予定が今日に掛かっていないだけの車は空いている＝在庫。
             unknown.append(v)
         elif status == '在庫':
-            stock[region].append((v, ev))
+            # 先の予約が入っている車は在庫に出さず、担当者別の「この先の予約」で見せる
+            if not has_future_resv:
+                stock[region].append((v, ev, nexts))
         elif status == '予約済':
             resv[region].setdefault(match_staff((ev or {}).get('staff', '')), []).append((v, ev))
         elif status in ('修理中', '点検中', '車検中'):
             maint[region].append((v, ev, status))
-        # 今は在庫でも先の予約が入っていれば、その車の所在地側に載せる
-        for nx in upcoming.get(v['id'], []):
-            if nx.get('status') != '予約済':
-                continue
-            ahead[region].setdefault(match_staff(nx.get('staff', '')), []).append((v, nx))
 
+        for nx in nexts:
+            if nx.get('status') == '予約済':
+                ahead[region].setdefault(match_staff(nx.get('staff', '')), []).append((v, nx))
+
+    return {'stock': stock, 'resv': resv, 'ahead': ahead, 'maint': maint,
+            'unknown': unknown, 'loc_map': loc_map}
+
+def _region_blocks(d, region, data):
+    """1支店ぶんの朝一ライン（構造化ブロック）"""
     dt = datetime.strptime(d, '%Y-%m-%d')
+    loc_map = data['loc_map']
     blocks = []
     def head(text):  blocks.append({'type': 'head',    'text': text})
     def section(t):  blocks.append({'type': 'section', 'text': t})
@@ -2160,108 +2205,156 @@ def build_morning_blocks(date=None):
     def item(text, v, ev, kind, sub=None):
         b = {'type': 'item', 'text': text, 'kind': kind,
              'vehicle_id': v['id'], 'number': v['number'],
-             'event_id': (ev or {}).get('id')}
+             'event_id': (ev or {}).get('id'), 'region': region}
         if sub: b['sub'] = sub
         blocks.append(b)
 
-    head(f'【{dt.month}/{dt.day} 朝一 在庫・予約】')
-    blank()
+    flag  = {'京都': '🔵', '滋賀': '🟢'}.get(region, '⚪')
+    order = {'京都': MORNING_STAFF_KYOTO, '滋賀': MORNING_STAFF_SHIGA}.get(region, MORNING_STAFF)
+
+    head(f'【{dt.month}/{dt.day} 朝一 {region}】')
     plain('★洗車済　☆中清掃済　●冬タイヤ')
     blank()
 
-    for region, flag, order in (('京都', '🔵', MORNING_STAFF_KYOTO),
-                                ('滋賀', '🟢', MORNING_STAFF_SHIGA)):
-        items = stock[region]
-        section(f'{flag}{region} 在庫 {len(items)}台')
-        if items:
-            for v, ev in items:
-                line = f"・{v['car_type']} {v['number']}{_stock_marks(v, ev)}".rstrip()
-                line += _place_label(ev)
-                nxt = next((x for x in upcoming.get(v['id'], [])), None)
-                if nxt:
-                    if nxt.get('tentative'):
-                        line += '（次の予約：日程調整中）'
-                    else:
-                        line += f"（{_fmt_date(nxt['start_date'])}まで貸出可）"
-                item(line, v, ev, '在庫')
-        else:
-            plain('（在庫なし）')
-
-        blank()
-        section(f'{flag}{region} 予約')
-        names = order + [s for s in resv[region] if s not in order]
+    def by_person(groups, fmt, kind):
+        """担当者ごとに【氏名】で区切って並べる"""
+        names = order + [x for x in groups if x not in order]
         first = True
-        for s in names:
-            if s not in resv[region]:
+        for name in names:
+            if name not in groups:
                 continue
             if not first: blank()
-            plain(f'【{s}】')
-            for v, ev in resv[region][s]:
-                parts = [f"・{v['car_type']}", v['number'], _period_label(ev)]
-                if ev.get('client'): parts.append(ev['client'])
-                note = _clean_note(ev)
-                item(' '.join(p for p in parts if p), v, ev, '予約済',
-                     sub=f'　（{note}）' if note else None)
+            plain(f'【{name}】')
+            for v, ev in groups[name]:
+                text, sub = fmt(v, ev)
+                item(text, v, ev, kind, sub=sub)
             first = False
-        if first:
-            plain('（予約なし）')
+        return not first
 
-        if any(ahead[region].values()):
-            blank()
-            section(f'▼この先の予約（{_UPCOMING_DAYS}日以内）')
-            names2 = order + [x for x in ahead[region] if x not in order]
-            for sname in names2:
-                if sname not in ahead[region]:
-                    continue
-                for v, nx in ahead[region][sname]:
-                    label = '' if sname == '担当未設定' else sname
-                    parts = [f"・{v['car_type']}", v['number'], _period_label(nx), label]
-                    if nx.get('client'): parts.append(nx['client'])
-                    item(' '.join(p for p in parts if p), v, nx, '予約済')
+    # 在庫（先の予約が入っていない車だけ）
+    items = data['stock'][region]
+    section(f'{flag}在庫 {len(items)}台')
+    if items:
+        for v, ev, nexts in items:
+            line = f"・{v['car_type']} {v['number']}{_stock_marks(v, ev)}".rstrip()
+            line += _place_label(loc_map.get(v['id']))
+            nxt = next(iter(nexts), None)
+            if nxt:
+                line += f"（{_fmt_date(nxt['start_date'])}から{_ACT_LABEL.get(nxt['status'], nxt['status'])}）"
+            item(line, v, ev, '在庫')
+    else:
+        plain('（在庫なし）')
 
-        for label, wanted in (('修理', ('修理中',)), ('点検・車検', ('点検中', '車検中'))):
-            group = [x for x in maint[region] if x[2] in wanted]
-            if not group:
-                continue
-            blank()
-            section(f'▼{label}')
-            for v, ev, status in group:
-                item(f"・{v['car_type']} {v['number']}{_place_label(ev)}", v, ev, status)
+    # 本日にかかっている予約
+    blank()
+    section(f'{flag}予約')
+    def fmt_resv(v, ev):
+        parts = [f"・{v['car_type']}", v['number'], _period_label(ev)]
+        if ev.get('client'): parts.append(ev['client'])
+        note = _clean_note(ev)
+        return ' '.join(p for p in parts if p), (f'　（{note}）' if note else None)
+    if not by_person(data['resv'][region], fmt_resv, '予約済'):
+        plain('（予約なし）')
 
-        if region == '京都':
-            blank()
-            blank()
-
-    if unknown:
-        nums = ' '.join(v['number'] for v in unknown)
+    # この先の予約（担当者別）
+    if any(data['ahead'][region].values()):
         blank()
-        plain(f'※状態未登録 {len(unknown)}台（{nums}）')
+        section(f'▼この先の予約（{_UPCOMING_DAYS}日以内）')
+        def fmt_ahead(v, nx):
+            parts = [f"・{v['car_type']}", v['number'], _period_label(nx)]
+            if nx.get('client'): parts.append(nx['client'])
+            return ' '.join(p for p in parts if p), None
+        by_person(data['ahead'][region], fmt_ahead, '予約済')
+
+    for label, wanted in (('修理', ('修理中',)), ('点検・車検', ('点検中', '車検中'))):
+        group = [x for x in data['maint'][region] if x[2] in wanted]
+        if not group:
+            continue
+        blank()
+        section(f'▼{label}')
+        for v, ev, status in group:
+            item(f"・{v['car_type']} {v['number']}{_place_label(loc_map.get(v['id']))}",
+                 v, ev, status)
 
     return blocks
 
+def build_morning_parts(date=None):
+    """支店ごとに分けた朝一ライン [{region, blocks, text}]。
+
+    京都と滋賀は別々に配信する。所在地が入っていない車があるときだけ、
+    3通目として「所在地未入力」を付ける。
+    """
+    d = date or today_jst()
+    data = _collect_morning(d)
+    parts = []
+    for region in REGIONS:
+        bl = _region_blocks(d, region, data)
+        parts.append({'region': region, 'blocks': bl, 'text': blocks_to_text(bl)})
+
+    has_unplaced = (data['stock'][NO_REGION] or data['resv'][NO_REGION]
+                    or data['ahead'][NO_REGION] or data['maint'][NO_REGION])
+    if has_unplaced:
+        bl = _region_blocks(d, NO_REGION, data)
+        bl.append({'type': 'blank'})
+        bl.append({'type': 'plain',
+                   'text': '※返却時に所在地を入れると京都／滋賀に振り分けられます'})
+        parts.append({'region': NO_REGION, 'blocks': bl, 'text': blocks_to_text(bl)})
+
+    if data['unknown']:
+        nums = ' '.join(v['number'] for v in data['unknown'])
+        note = f'※状態未登録 {len(data["unknown"])}台（{nums}）'
+        last = parts[-1]
+        last['blocks'] += [{'type': 'blank'}, {'type': 'plain', 'text': note}]
+        last['text'] = blocks_to_text(last['blocks'])
+    return parts
+
+def build_morning_blocks(date=None):
+    """プレビュー用：全支店のブロックを区切り付きでつなぐ"""
+    out = []
+    for i, p in enumerate(build_morning_parts(date)):
+        if i:
+            out.append({'type': 'split', 'text': p['region']})
+        out.extend(p['blocks'])
+    return out
+
 def build_morning_report(date=None):
-    """朝一の一斉ライン本文（テキスト）"""
-    return blocks_to_text(build_morning_blocks(date))
+    """朝一の一斉ライン本文（全支店をまとめたテキスト。確認用）"""
+    return '\n\n'.join(p['text'] for p in build_morning_parts(date))
+
+def _push_morning(date=None):
+    """支店ごとに分けてグループLINEへ送る。送った通数を返す。"""
+    group_id = get_setting('line_group_id')
+    if not group_id or not LINE_CHANNEL_TOKEN:
+        return 0, build_morning_parts(date)
+    parts = build_morning_parts(date)
+    for p in parts:
+        send_line_push(group_id, p['text'])
+    return len(parts), parts
 
 @app.route('/api/morning-report', methods=['GET', 'POST'])
 def api_morning_report():
     key = request.headers.get('X-Admin-Key','') or request.args.get('key','')
     if key != ADMIN_PASS:
         return jsonify({'error': 'Unauthorized'}), 401
-    msg      = build_morning_report(request.args.get('date') or None)
-    group_id = get_setting('line_group_id')
-    if group_id and LINE_CHANNEL_TOKEN:
-        send_line_push(group_id, msg)
-        return jsonify({'sent': True, 'message': msg})
-    return jsonify({'sent': False, 'reason': 'group_id or token not set', 'message': msg})
+    sent, parts = _push_morning(request.args.get('date') or None)
+    return jsonify({'sent': bool(sent), 'count': sent,
+                    'messages': [{'region': p['region'], 'text': p['text']} for p in parts]})
 
 @app.route('/api/morning-report/preview', methods=['GET'])
 @login_required
 def api_morning_report_preview():
     """送信せずに本文と明細を返す（前夜の事前確認・修正用）"""
     d = request.args.get('date') or today_jst()
-    blocks = build_morning_blocks(d)
-    return jsonify({'date': d, 'message': blocks_to_text(blocks), 'blocks': blocks})
+    parts = build_morning_parts(d)
+    blocks = []
+    for i, p in enumerate(parts):
+        if i:
+            blocks.append({'type': 'split', 'text': p['region']})
+        blocks.extend(p['blocks'])
+    return jsonify({'date': d,
+                    'message': '\n\n'.join(p['text'] for p in parts),
+                    'messages': [{'region': p['region'], 'text': p['text']} for p in parts],
+                    'blocks': blocks})
 
 @app.route('/api/morning-report/entry/<int:eid>/remove', methods=['POST'])
 @login_required
@@ -2283,34 +2376,34 @@ def api_morning_entry_remove(eid):
         return jsonify({'error': 'not found'}), 404
     vehicle_id = row['vehicle_id']
     conn.execute('DELETE FROM events WHERE id=?', (eid,))
+    conn.commit()
+    conn.close()
 
     restocked = False
     if restock:
-        v = conn.execute('SELECT region FROM vehicles WHERE id=?', (vehicle_id,)).fetchone()
-        loc = (v['region'] or '') if v else ''
+        # 在庫に戻すときも、直前に分かっていた所在地を引き継ぐ
+        loc = current_locations(d).get(vehicle_id, '')
+        conn = get_db()
         conn.execute(
             '''INSERT INTO events
                (vehicle_id,status,start_date,end_date,staff,client,category,notes,created_at,location)
                VALUES (?,?,?,?,?,?,?,?,?,?)''',
             (vehicle_id, '在庫', d, None, '', '', '', '',
              datetime.now(JST).strftime('%Y-%m-%d %H:%M:%S'), loc))
+        conn.commit()
+        conn.close()
         restocked = True
-
-    conn.commit()
-    conn.close()
     return jsonify({'ok': True, 'restocked': restocked, 'vehicle_id': vehicle_id})
 
 @app.route('/api/morning-report/send', methods=['POST'])
 @login_required
 def api_morning_report_send():
-    """プレビュー画面からの手動送信"""
+    """プレビュー画面からの手動送信（京都・滋賀を分けて送る）"""
     body = request.get_json() or {}
-    msg  = body.get('message') or build_morning_report(body.get('date') or None)
-    group_id = get_setting('line_group_id')
-    if not group_id or not LINE_CHANNEL_TOKEN:
+    sent, _ = _push_morning(body.get('date') or None)
+    if not sent:
         return jsonify({'error': 'LINE not configured'}), 500
-    send_line_push(group_id, msg)
-    return jsonify({'ok': True})
+    return jsonify({'ok': True, 'count': sent})
 
 @app.route('/api/pending/remind', methods=['GET', 'POST'])
 def api_pending_remind():
@@ -2665,7 +2758,24 @@ def api_liff_submit():
         'location':        d.get('location',''),
         'washed':          d.get('washed', False),
         'interior_cleaned':d.get('interior_cleaned', False),
+        'deliver_to':      d.get('deliver_to', ''),
     }
+    if status == '貸出中':
+        # 配車は予約からの流れ。フォームで空でも、いま入っている予約の
+        # 取引先・担当を引き継ぐ。区分（損保など）は配車では扱わない。
+        conn_r = get_db()
+        rv = conn_r.execute(
+            '''SELECT client, client_contact, staff FROM events
+               WHERE vehicle_id=? AND status='予約済'
+                 AND COALESCE(end_date,'9999-12-31') >= ?
+               ORDER BY tentative ASC, start_date ASC, created_at DESC LIMIT 1''',
+            (v['id'], state['start_date'])).fetchone()
+        conn_r.close()
+        if rv:
+            state['client'] = state['client'] or (rv['client'] or '')
+            state['staff']  = state['staff']  or (rv['staff'] or '')
+        state['category'] = ''
+
     if with_reservation:
         # 返却は在庫として記録し、担当・顧客は後続の予約側に持たせる
         state.update({'staff': '', 'client': '', 'category': '', 'end_date': None})
@@ -2729,6 +2839,8 @@ def api_liff_submit():
         conn3.close()
         msg += '\n（他社借り車両のため記録を削除しました）'
 
+    msg = _sign(msg, d.get('inputter'))
+
     # グループLINEに通知（部門ごとの通知先。セールス部門は既定で送信しない）
     dept      = norm_dept(v.get('department'))
     line_sent = push_to_dept_group(dept, msg)
@@ -2767,6 +2879,7 @@ def _liff_update_reservation(d, v):
 
     msg = _build_line_msg(v['number'], v.get('car_type', ''), '予約変更',
                           staff, client, start_d, end_d, cat, tentative=tentative)
+    msg = _sign(msg, d.get('inputter'))
     dept = norm_dept(v.get('department'))
     sent = push_to_dept_group(dept, msg)
     return jsonify({'ok': True, 'message': msg, 'line_sent': sent})
@@ -2817,6 +2930,7 @@ def api_liff_cancel():
     msg = _build_line_msg(num, ctype, '予約取消', ev['staff'] or '', client,
                           start_d, ev['end_date'], ev['category'] or '',
                           tentative=bool(ev['tentative']))
+    msg = _sign(msg, d.get('inputter'))
     dept = norm_dept(v['department'] if v else None)
     if dept == 'rental':
         # レンタカー事業部は従来どおり環境変数の宛先（挙動を変えない）

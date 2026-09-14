@@ -64,6 +64,15 @@ body.dept-sales .action-btn.selected{border-color:#4a3410;background:#4a3410}
 </div>
 <div class="container">
 
+  <!-- 入力者 -->
+  <div class="section" id="inputterSection" style="padding:10px 14px;">
+    <div style="display:flex;align-items:center;gap:10px;">
+      <div style="font-size:13px;font-weight:bold;color:#333;white-space:nowrap;">✍️ 入力者</div>
+      <select id="inputterSelect" onchange="onInputterChange()" style="flex:1;"></select>
+    </div>
+    <div style="font-size:11px;color:#888;margin-top:4px;">共有メッセージの最後に「（by 苗字）」で付きます。次回から自動で選ばれます。</div>
+  </div>
+
   <!-- 社外借り -->
   <div class="section" style="border:2px solid #FF9800;background:#FFF8E1;">
     <label style="display:flex;align-items:center;gap:12px;cursor:pointer;padding:4px 0;">
@@ -233,6 +242,24 @@ body.dept-sales .action-btn.selected{border-color:#4a3410;background:#4a3410}
     </div>
   </div>
 
+  <!-- 配車：予約から引き継ぐ内容 -->
+  <div class="section hide" id="dispatchInfo" style="border:2px solid #1E88E5;background:#F3F8FE;">
+    <div class="section-title">🔗 予約から引き継ぎ</div>
+    <div id="dispatchInfoBody" style="font-size:14px;line-height:1.7;color:#1a3a5c;"></div>
+  </div>
+
+  <!-- 配車：どこへ持っていくか -->
+  <div class="section hide" id="deliverSection">
+    <div class="section-title">🚚 搬送先（任意）</div>
+    <input type="text" id="deliverTo" placeholder="例: 京都日産 十条店">
+  </div>
+
+  <!-- 返却：どの貸出を返すか -->
+  <div class="section hide" id="returnInfo" style="border:2px solid #43A047;background:#F1F8F2;">
+    <div class="section-title">↩️ 返却する貸出</div>
+    <div id="returnInfoBody" style="font-size:14px;line-height:1.7;color:#1B5E20;"></div>
+  </div>
+
   <!-- 距離 -->
   <div class="section" id="mileageSection">
     <div class="section-title">📊 走行距離（不正防止用）</div>
@@ -348,6 +375,7 @@ async function loadStaffOptions() {
   if (currentDept === 'rental') {
     sel.innerHTML = _rentalStaffOptionsHTML;
     staffChanged();
+    buildInputterOptions();
     return;
   }
   sel.innerHTML = '<option value="">選択してください</option>';
@@ -363,6 +391,7 @@ async function loadStaffOptions() {
   other.value = '__other__'; other.textContent = 'その他（直接入力）';
   sel.appendChild(other);
   staffChanged();
+  buildInputterOptions();
 }
 
 // 取引先マスタ読み込み
@@ -484,6 +513,8 @@ function applyVehicleFlags(v) {
   document.getElementById('studless').checked       = !!v.studless;
   document.getElementById('isRentalOther').checked  = !!v.is_rental_other;
   showVehicleNote(v);
+  // 先に要件を選んでから車番を入れた場合も、予約・貸出の内容を引き継ぐ
+  if (selectedAction === '配車' || selectedAction === '返却') loadLinkedInfo();
 }
 
 // 車両マスタに登録された備考（事故歴・整備予定など）を車番の下に出す
@@ -546,6 +577,12 @@ function updateSections() {
   document.getElementById('cancelSection').classList.toggle('hide', !isCancel);
   if (isCancel) loadCancelList();
   document.getElementById('repairKindSection').classList.toggle('hide', a !== '修理');
+  document.getElementById('deliverSection').classList.toggle('hide', a !== '配車');
+  if (a === '配車' || a === '返却') loadLinkedInfo();
+  else {
+    document.getElementById('dispatchInfo').classList.add('hide');
+    document.getElementById('returnInfo').classList.add('hide');
+  }
   // 配車は届けに行く操作なので、今どこにあるかは聞かない
   document.getElementById('locationSection').classList.toggle('hide',
     a === '配車' || a === 'キャンセル');
@@ -557,9 +594,9 @@ function updateSections() {
   // 顧客名（返却＋予約では予約側、予約変更では配車先の変更に使う）
   document.getElementById('clientSection').classList.toggle('hide',
     a === '修理' || isReturnOnly || (isCancel && !isChange));
-  // 適用
+  // 適用（損保など）は予約で決まる。配車では入力させない
   document.getElementById('categorySection').classList.toggle('hide',
-    a === '修理' || isReturnOnly || (isCancel && !isChange));
+    a === '修理' || a === '配車' || isReturnOnly || (isCancel && !isChange));
   // 担当
   document.getElementById('staffSection').classList.toggle('hide', isCancel && !isChange);
   // 距離
@@ -576,6 +613,79 @@ function staffChanged() {
   const sel = document.getElementById('staffSelect').value;
   const wrap = document.getElementById('staffInputWrap');
   wrap.classList.toggle('hide', sel !== '__other__');
+}
+
+// ── 入力者 ─────────────────────────────────────
+const INPUTTER_KEY = 'fleetInputter';
+
+function buildInputterOptions() {
+  const src = document.getElementById('staffSelect');
+  const sel = document.getElementById('inputterSelect');
+  if (!src || !sel) return;
+  let saved = '';
+  try { saved = localStorage.getItem(INPUTTER_KEY + ':' + currentDept) || ''; } catch (e) {}
+  // 担当者の選択肢をそのまま使う（「その他」は除く）
+  sel.innerHTML = '<option value="">選択してください</option>' +
+    [...src.querySelectorAll('option')]
+      .filter(o => o.value && o.value !== '__other__')
+      .map(o => `<option value="${o.value}">${o.textContent}</option>`).join('');
+  if (saved && [...sel.options].some(o => o.value === saved)) sel.value = saved;
+}
+
+function onInputterChange() {
+  try {
+    localStorage.setItem(INPUTTER_KEY + ':' + currentDept,
+                         document.getElementById('inputterSelect').value);
+  } catch (e) {}
+}
+
+function getInputter() {
+  const el = document.getElementById('inputterSelect');
+  return el ? el.value : '';
+}
+
+// ── 配車・返却：いま入っている予約／貸出を取りに行く ────────────
+async function loadLinkedInfo() {
+  const a = selectedAction;
+  const disp = document.getElementById('dispatchInfo');
+  const ret  = document.getElementById('returnInfo');
+  disp.classList.add('hide'); ret.classList.add('hide');
+  if (!selectedVehicleId) return;
+  let evs = [];
+  try {
+    evs = await fetch(`${API_BASE}/api/liff/events?vehicle_id=${selectedVehicleId}`).then(r => r.json());
+  } catch (e) { return; }
+  if (selectedAction !== a) return;   // 取得中に要件を変えた
+
+  if (a === '配車') {
+    const r = evs.find(e => e.status === '予約済');
+    if (!r) return;
+    // 予約の内容を入力欄に入れる（空欄のときだけ。手で直した内容は上書きしない）
+    const client = document.getElementById('client');
+    if (!client.value && r.client) client.value = r.client;
+    const contact = document.getElementById('clientContact');
+    if (!contact.value && r.client_contact) contact.value = r.client_contact;
+    if (!getStaff() && r.staff) setStaff(r.staff);
+    const period = r.tentative ? '日程調整中'
+                 : `${r.start_date || ''}${r.end_date ? '〜' + r.end_date : '〜'}`;
+    document.getElementById('dispatchInfoBody').innerHTML =
+      `${escHtml(r.client || '（取引先未入力）')}<br>` +
+      `<span style="font-size:12px;color:#555;">担当 ${escHtml(r.staff || '未設定')}　${escHtml(period)}` +
+      `${r.category ? '　' + escHtml(r.category) : ''}</span>`;
+    disp.classList.remove('hide');
+  } else if (a === '返却') {
+    const r = evs.find(e => e.status === '貸出中') || evs.find(e => e.status === '予約済');
+    if (!r) return;
+    document.getElementById('returnInfoBody').innerHTML =
+      `${escHtml(r.client || '（取引先未入力）')}<br>` +
+      `<span style="font-size:12px;color:#555;">${escHtml(r.status)}　担当 ${escHtml(r.staff || '未設定')}` +
+      `　${escHtml(r.start_date || '')}〜</span>`;
+    ret.classList.remove('hide');
+  }
+}
+
+function escHtml(t) {
+  return String(t).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 }
 
 function getStaff() {
@@ -728,6 +838,8 @@ async function submitForm() {
     vehicle_number:   document.getElementById('vehicleNumber').value.trim(),
     car_type:         document.getElementById('otherCarType').value.trim(),
     event_id:         selectedCancelEventId,
+    inputter:         getInputter(),
+    deliver_to:       selectedAction === '配車' ? document.getElementById('deliverTo').value.trim() : '',
   };
 
   try {
@@ -781,6 +893,9 @@ function resetForm() {
   document.getElementById('resvStartDate').value = '';
   document.getElementById('resvEndDate').value = '';
   document.getElementById('otherCarType').value = '';
+  document.getElementById('deliverTo').value = '';
+  document.getElementById('dispatchInfo').classList.add('hide');
+  document.getElementById('returnInfo').classList.add('hide');
   selectedKind = '修理';
   ['修理', '点検', '車検'].forEach(k => {
     const b = document.getElementById('kind-' + k);
@@ -812,7 +927,7 @@ async function cancelEvent() {
     const res = await fetch(`${API_BASE}/api/liff/cancel`, {
       method: 'POST',
       headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify({ key: '3155', event_id: selectedCancelEventId }),
+      body: JSON.stringify({ key: '3155', event_id: selectedCancelEventId, inputter: getInputter() }),
     });
     const data = await res.json();
     if (res.ok && data.ok) {

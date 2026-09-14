@@ -232,3 +232,7 @@ thead .cal-vehicle-col { position: sticky; left: 0; top: 0; z-index: 3; backgrou
 .mp-item .mp-edit { margin-left: auto; color: #90A4AE; font-size: 11px; }
 .mp-item:hover .mp-edit { color: #1a3a5c; }
 .mp-item > div { flex-basis: 100%; }
+
+/* 朝一ラインプレビュー：支店ごとの配信の区切り */
+.mp-split { margin: 12px -6px; padding: 5px 8px; border-top: 2px dashed #90A4AE;
+            color: #607D8B; font-size: 11px; font-weight: bold; }

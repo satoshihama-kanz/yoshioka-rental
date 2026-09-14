@@ -100,7 +100,7 @@ body.dept-sales th{background:#4a3410}
     <span class="count" id="vCount"></span>
   </div>
   <table>
-    <thead><tr><th>車番</th><th>車種</th><th>地域</th><th>区分</th><th>車検</th><th>備考</th><th>冬ﾀｲﾔ</th><th>操作</th></tr></thead>
+    <thead><tr><th>車番</th><th>車種</th><th>区分</th><th>車検</th><th>備考</th><th>冬ﾀｲﾔ</th><th>操作</th></tr></thead>
     <tbody id="vTable"></tbody>
   </table>
 </div>
@@ -144,7 +144,7 @@ body.dept-sales th{background:#4a3410}
     </div>
     <div class="form-row"><label>車番（4桁）</label><input type="text" id="vNumber" placeholder="例: 1234" maxlength="6"></div>
     <div class="form-row"><label>車種</label><input type="text" id="vCarType" placeholder="例: ADバン"></div>
-    <div class="form-row"><label>地域</label><input type="text" id="vRegion" placeholder="例: 京都"></div>
+    <input type="hidden" id="vRegion">
     <div class="form-row"><label>区分</label><input type="text" id="vCarCategory" placeholder="例: 軽自動車"></div>
     <div class="form-row"><label>車検満了日</label><input type="date" id="vInspection"></div>
     <div class="form-row"><label>備考</label><input type="text" id="vNotes" placeholder="例: 滋賀ナンバー変更予定"></div>
@@ -316,7 +316,7 @@ function renderVehicles() {
   document.getElementById('vCount').textContent = `${filtered.length} 件（${DEPT_LABELS[currentDept]}）`;
   if (filtered.length === 0) {
     document.getElementById('vTable').innerHTML =
-      `<tr><td colspan="8" style="text-align:center;color:#999;padding:24px">
+      `<tr><td colspan="7" style="text-align:center;color:#999;padding:24px">
          ${DEPT_LABELS[currentDept]}の車両はまだ登録されていません
        </td></tr>`;
     return;
@@ -325,7 +325,6 @@ function renderVehicles() {
     <tr>
       <td><b>${v.number}</b></td>
       <td>${v.car_type||''}</td>
-      <td>${v.region||''}</td>
       <td>${v.car_category||''}</td>
       <td class="tight">${fmtInsp(v.inspection_date)}</td>
       <td class="vnote">${esc(v.notes||'')}</td>
