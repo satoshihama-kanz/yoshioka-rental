@@ -2028,6 +2028,8 @@ _BRANCH_REGION = {
     '日産洛北店': '京都', '日産伏見店': '京都',
     'カローラ吉祥院': '京都', 'トヨタ宇治店': '京都',
     'P滋賀栗東': '滋賀', 'トヨタ水口泉': '滋賀', 'トヨタ瀬田草津': '滋賀',
+    # 奈良・福井は滋賀支店の管轄
+    'サティオ奈良奈良支店': '滋賀', 'P福井敦賀店': '滋賀',
 }
 REGIONS = ('京都', '滋賀')
 NO_REGION = '所在地未入力'
@@ -2039,7 +2041,11 @@ def branch_region(loc):
         return None
     if '滋賀' in loc: return '滋賀'
     if '京都' in loc: return '京都'
-    return _BRANCH_REGION.get(loc)
+    r = _BRANCH_REGION.get(loc)
+    if r: return r
+    # 奈良・福井の預け先は滋賀支店の管轄として扱う
+    if '奈良' in loc or '福井' in loc: return '滋賀'
+    return None
 
 def current_locations(date=None, dept=DEFAULT_DEPT):
     """各車両の「今どこにあるか」を返す {vehicle_id: 所在地}。
