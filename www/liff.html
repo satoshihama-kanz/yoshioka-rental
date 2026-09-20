@@ -87,7 +87,9 @@ body.dept-sales .action-btn.selected{border-color:#4a3410;background:#4a3410}
       <div style="font-size:13px;font-weight:bold;color:#333;white-space:nowrap;">✍️ 入力者<span style="color:#f44336">*</span></div>
       <select id="inputterSelect" onchange="onInputterChange()" style="flex:1;"></select>
     </div>
-    <div style="font-size:11px;color:#888;margin-top:4px;">登録した人の名前です。共有メッセージの最後に「（by 苗字）」で付きます。次回から自動で選ばれます。</div>
+    <input type="text" id="inputterInput" placeholder="一覧に無い名前はここに入力"
+           oninput="inputterTyped()" style="margin-top:6px;">
+    <div style="font-size:11px;color:#888;margin-top:4px;">登録した人の名前です。共有メッセージの最後に「（by 苗字）」で付きます。次回から自動で入ります。</div>
   </div>
 
   <!-- 社外借り -->
@@ -658,19 +660,36 @@ function buildInputterOptions() {
       .filter(o => o.value && o.value !== '__other__')
       .map(o => `<option value="${o.value}">${o.textContent}</option>`).join('');
   if (saved && [...sel.options].some(o => o.value === saved)) sel.value = saved;
+  const inp = document.getElementById('inputterInput');
+  if (inp && saved) inp.value = saved;
+  updateSubmitBtn();
 }
 
 function onInputterChange() {
+  const sel = document.getElementById('inputterSelect').value;
+  if (sel) document.getElementById('inputterInput').value = sel;
+  saveInputter();
+}
+
+// 直接入力したら、一覧の選択も名前に合わせる（一致しなければ未選択に戻す）
+function inputterTyped() {
+  const name = document.getElementById('inputterInput').value.trim();
+  const sel = document.getElementById('inputterSelect');
+  sel.value = [...sel.options].some(o => o.value === name) ? name : '';
+  saveInputter();
+}
+
+function saveInputter() {
   updateSubmitBtn();
   try {
-    localStorage.setItem(INPUTTER_KEY + ':' + currentDept,
-                         document.getElementById('inputterSelect').value);
+    localStorage.setItem(INPUTTER_KEY + ':' + currentDept, getInputter());
   } catch (e) {}
 }
 
 function getInputter() {
-  const el = document.getElementById('inputterSelect');
-  return el ? el.value : '';
+  const inp = document.getElementById('inputterInput');
+  const sel = document.getElementById('inputterSelect');
+  return (inp && inp.value.trim()) || (sel ? sel.value : '');
 }
 
 // ── 配車・返却：いま入っている予約／貸出を取りに行く ────────────
