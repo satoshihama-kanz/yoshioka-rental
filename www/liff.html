@@ -46,6 +46,23 @@ select option[value=""]{color:#aaa}
 .hide{display:none!important}
 .vehicle-select-wrap{margin-top:8px}
 /* 部門切替 */
+html,body{max-width:100%;overflow-x:hidden}
+.container{width:100%}
+@media (max-width:380px){
+  .container{padding:8px 8px 76px}
+  .section{padding:10px}
+  .action-btn{font-size:13px;padding:10px 4px}
+  .action-btn .icon{font-size:17px}
+  input[type=text],input[type=number],input[type=date],select,textarea{font-size:14px;padding:8px 10px}
+  .date-row{gap:6px}
+}
+@media (orientation:landscape) and (max-height:500px){
+  .header{padding:8px 12px;position:static}
+  .header h1{font-size:15px}
+  .container{padding-bottom:72px}
+  .action-grid{grid-template-columns:repeat(3,1fr)}
+  .action-btn .icon{font-size:16px;margin-bottom:2px}
+}
 .dept-tabs{display:flex;background:#12293f}
 .dept-tab{flex:1 1 0;text-align:center;padding:10px 4px;cursor:pointer;font-size:13px;font-weight:bold;
   color:rgba(255,255,255,0.55);border-bottom:3px solid transparent}
@@ -67,10 +84,10 @@ body.dept-sales .action-btn.selected{border-color:#4a3410;background:#4a3410}
   <!-- 入力者 -->
   <div class="section" id="inputterSection" style="padding:10px 14px;">
     <div style="display:flex;align-items:center;gap:10px;">
-      <div style="font-size:13px;font-weight:bold;color:#333;white-space:nowrap;">✍️ 入力者</div>
+      <div style="font-size:13px;font-weight:bold;color:#333;white-space:nowrap;">✍️ 入力者<span style="color:#f44336">*</span></div>
       <select id="inputterSelect" onchange="onInputterChange()" style="flex:1;"></select>
     </div>
-    <div style="font-size:11px;color:#888;margin-top:4px;">共有メッセージの最後に「（by 苗字）」で付きます。次回から自動で選ばれます。</div>
+    <div style="font-size:11px;color:#888;margin-top:4px;">登録した人の名前です。共有メッセージの最後に「（by 苗字）」で付きます。次回から自動で選ばれます。</div>
   </div>
 
   <!-- 社外借り -->
@@ -239,6 +256,13 @@ body.dept-sales .action-btn.selected{border-color:#4a3410;background:#4a3410}
       <label>または直接入力</label>
       <input type="text" id="staffInput" placeholder="一覧に無い名前はここに入力" oninput="staffTyped()">
     </div>
+  </div>
+
+  <!-- 予約変更：選んだ予約の今の内容 -->
+  <div class="section hide" id="changeInfo" style="border:2px solid #FB8C00;background:#FFF8E7;">
+    <div class="section-title">📋 いまの予約内容</div>
+    <div id="changeInfoBody" style="font-size:14px;line-height:1.8;color:#8a4b00;"></div>
+    <div style="font-size:11px;color:#8a4b00;margin-top:6px;">下の欄を書き換えた部分だけが変わります。</div>
   </div>
 
   <!-- 配車：予約から引き継ぐ内容 -->
@@ -579,6 +603,7 @@ function updateSections() {
     document.getElementById('dispatchInfo').classList.add('hide');
     document.getElementById('returnInfo').classList.add('hide');
   }
+  if (!isChange) document.getElementById('changeInfo').classList.add('hide');
   // 配車は届けに行く操作なので、今どこにあるかは聞かない
   document.getElementById('locationSection').classList.toggle('hide',
     a === '配車' || a === 'キャンセル');
@@ -592,7 +617,7 @@ function updateSections() {
     a === '修理' || isReturnOnly || (isCancel && !isChange));
   // 適用（損保など）は予約で決まる。配車では入力させない
   document.getElementById('categorySection').classList.toggle('hide',
-    a === '修理' || a === '配車' || isReturnOnly || (isCancel && !isChange));
+    a === '修理' || isReturnOnly || (isCancel && !isChange));
   // 担当
   document.getElementById('staffSection').classList.toggle('hide', isCancel && !isChange);
   // 距離
@@ -636,6 +661,7 @@ function buildInputterOptions() {
 }
 
 function onInputterChange() {
+  updateSubmitBtn();
   try {
     localStorage.setItem(INPUTTER_KEY + ':' + currentDept,
                          document.getElementById('inputterSelect').value);
@@ -732,7 +758,20 @@ async function loadCancelList() {
 }
 
 // 選んだ予約の内容をフォームに読み込む（予約変更用）
+function showChangeInfo(ev) {
+  const period = ev.tentative ? '日程調整中'
+               : `${ev.start_date || ''}${ev.end_date ? ' 〜 ' + ev.end_date : ' 〜'}`;
+  document.getElementById('changeInfoBody').innerHTML =
+    `<b>${escHtml(ev.client || '（配車先なし）')}</b><br>` +
+    `期間　${escHtml(period)}<br>` +
+    `担当　${escHtml(ev.staff || '未設定')}` +
+    (ev.category ? `<br>適用　${escHtml(ev.category)}` : '') +
+    (ev.client_contact ? `<br>先方担当　${escHtml(ev.client_contact)}` : '');
+  document.getElementById('changeInfo').classList.remove('hide');
+}
+
 function fillFromEvent(ev) {
+  showChangeInfo(ev);
   document.getElementById('startDate').value = ev.tentative ? '' : (ev.start_date || '');
   document.getElementById('endDate').value   = ev.end_date || '';
   document.getElementById('client').value    = ev.client || '';
@@ -756,7 +795,15 @@ function closeToLine() {
       return true;
     }
   } catch (e) { /* LIFF未初期化 */ }
-  return false;
+  // 管理画面から開いた場合はこのタブを閉じる
+  try { window.close(); } catch (e) {}
+  // 閉じられない環境（LINEのブラウザなど）は元の画面に戻す
+  setTimeout(() => {
+    if (document.hidden) return;
+    if (history.length > 1) history.back();
+    else location.href = '/';
+  }, 400);
+  return true;
 }
 
 // LIFF IDが設定されていればSDKを初期化する（未設定なら従来どおり動く）
@@ -782,9 +829,9 @@ function updateSubmitBtn() {
   // 他社借りはマスタに無い車番でも登録できるので、車番が入っていればよい
   const hasVehicle = selectedVehicleId ||
     (other && document.getElementById('vehicleNumber').value.trim());
-  const ok = (isCancel || isChange)
+  const ok = getInputter() && ((isCancel || isChange)
     ? (selectedVehicleId && selectedCancelEventId)
-    : (hasVehicle && selectedAction);
+    : (hasVehicle && selectedAction));
   const btn = document.getElementById('submitBtn');
   btn.disabled = !ok;
   btn.textContent = isCancel ? '取り消す' : (isChange ? '変更する' : '登録する');

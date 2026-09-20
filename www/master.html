@@ -28,6 +28,30 @@ header a{color:#aad4f5;text-decoration:none;font-size:11px;white-space:nowrap}
   border-bottom:1px solid #FFE082;font-size:11px;color:#795548;flex-wrap:wrap}
 .lock-bar.unlocked{background:#E8F5E9;border-bottom-color:#A5D6A7;color:#2E7D32}
 .lock-bar .btn{padding:3px 9px;font-size:11px}
+html,body{max-width:100%;overflow-x:hidden}
+.content{overflow-x:auto;-webkit-overflow-scrolling:touch}
+@media (max-width:380px){
+  header{padding:6px 8px;gap:6px;flex-wrap:wrap}
+  header h1{font-size:13px}
+  header a{font-size:10px}
+  .tab{font-size:11px;padding:7px 7px}
+  .content{padding:10px 8px}
+  .toolbar input{width:100%}
+  th{font-size:9px;padding:4px 3px}
+  td{font-size:10px;padding:4px 3px}
+  .modal{padding:16px}
+}
+@media (orientation:landscape) and (max-height:500px){
+  header{padding:5px 10px}
+  .content{padding:8px 10px}
+  .modal{max-height:86vh;overflow-y:auto}
+}
+.plate-row{display:grid;grid-template-columns:1.4fr 1fr .8fr;gap:6px}
+.plate-row2{display:grid;grid-template-columns:1.2fr 1fr;gap:6px}
+.plate-help{font-size:10px;color:#999;margin-top:4px;line-height:1.5}
+.plate-view{margin-top:6px;padding:6px 10px;background:#F1F5F9;border-radius:6px;
+  font-size:14px;font-weight:bold;color:#1a3a5c;letter-spacing:.04em}
+.vplate{font-size:10px;color:#666;white-space:nowrap}
 table{width:100%;border-collapse:collapse;background:white;border-radius:8px;overflow:hidden;box-shadow:0 1px 4px rgba(0,0,0,0.08);table-layout:fixed}
 th{background:#1a3a5c;color:white;padding:5px 4px;text-align:left;font-size:10px;line-height:1.25;word-break:keep-all}
 td{padding:5px 4px;border-bottom:1px solid #f0f0f0;vertical-align:middle;font-size:11px;line-height:1.3;word-break:break-all}
@@ -100,7 +124,7 @@ body.dept-sales th{background:#4a3410}
     <span class="count" id="vCount"></span>
   </div>
   <table>
-    <thead><tr><th>車番</th><th>車種</th><th>区分</th><th>車検</th><th>備考</th><th>冬ﾀｲﾔ</th><th>操作</th></tr></thead>
+    <thead><tr><th>車番</th><th>登録番号</th><th>車種</th><th>区分</th><th>車検</th><th>備考</th><th>冬ﾀｲﾔ</th><th>操作</th></tr></thead>
     <tbody id="vTable"></tbody>
   </table>
 </div>
@@ -142,11 +166,28 @@ body.dept-sales th{background:#4a3410}
         <option value="sales">セールス部門（代車）</option>
       </select>
     </div>
-    <div class="form-row"><label>車番（4桁）</label><input type="text" id="vNumber" placeholder="例: 1234" maxlength="6"></div>
+    <div class="form-row"><label>車番（4桁）</label><input type="text" id="vNumber" placeholder="例: 1234" maxlength="6" oninput="syncPlate()"></div>
+    <div class="form-row">
+      <label>登録番号</label>
+      <div class="plate-row">
+        <input type="text" id="vPlateArea"  placeholder="京都" oninput="syncPlate()">
+        <input type="text" id="vPlateClass" placeholder="480" maxlength="3" inputmode="numeric" oninput="syncPlate()">
+        <input type="text" id="vPlateKana"  placeholder="わ" maxlength="2" oninput="syncPlate()">
+      </div>
+      <div class="plate-help">地域名／分類番号（3桁）／ひらがな。車番と合わせて登録番号になります。</div>
+      <div class="plate-view" id="vPlateView">—</div>
+    </div>
     <div class="form-row"><label>車種</label><input type="text" id="vCarType" placeholder="例: ADバン"></div>
     <input type="hidden" id="vRegion">
     <div class="form-row"><label>区分</label><input type="text" id="vCarCategory" placeholder="例: 軽自動車"></div>
-    <div class="form-row"><label>車検満了日</label><input type="date" id="vInspection"></div>
+    <div class="form-row">
+      <label>車検満了日</label>
+      <div class="plate-row2">
+        <input type="date" id="vInspection" onchange="syncInsp('date')">
+        <input type="text" id="vInspWareki" placeholder="R8/12/5" oninput="syncInsp('wareki')">
+      </div>
+      <div class="plate-help">どちらに入れても構いません。元号は R8/12/5 の形で入力できます。</div>
+    </div>
     <div class="form-row"><label>備考</label><input type="text" id="vNotes" placeholder="例: 滋賀ナンバー変更予定"></div>
     <div class="form-row">
       <label><input type="checkbox" id="vStudless"> スタッドレスタイヤ装着</label>
@@ -302,11 +343,34 @@ function showTab(name) {
 
 // ── 車両 ──
 function esc(t){return String(t).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));}
+// 西暦 yyyy-mm-dd → 元号表記（R8/12/5）
+function toWareki(d){
+  if(!d) return '';
+  const x=new Date(d); if(isNaN(x)) return '';
+  const y=x.getFullYear();
+  const era = y>=2019 ? 'R' : 'H';
+  const n   = y>=2019 ? y-2018 : y-1988;
+  return `${era}${n}/${x.getMonth()+1}/${x.getDate()}`;
+}
+
+// 元号表記（R8/12/5・R8.12.5・令和8年12月5日）→ yyyy-mm-dd
+function fromWareki(t){
+  t = (t||'').trim();
+  if(!t) return '';
+  if(/^\d{4}-\d{2}-\d{2}$/.test(t)) return t;
+  const m = t.replace(/[年月．.]/g,'/').replace(/日/,'')
+             .match(/^(令和|平成|[RrHh])\s*(\d{1,2})\/(\d{1,2})\/(\d{1,2})$/);
+  if(!m) return '';
+  const era = /^(令和|[Rr])$/.test(m[1]) ? 'R' : 'H';
+  const y = era==='R' ? 2018+ +m[2] : 1988+ +m[2];
+  return `${y}-${String(+m[3]).padStart(2,'0')}-${String(+m[4]).padStart(2,'0')}`;
+}
+
 function fmtInsp(d){
   if(!d) return '';
   const x=new Date(d); if(isNaN(x)) return '';
   const soon=(x-new Date())/86400000 <= 60;
-  const t=`${x.getFullYear()%100}/${x.getMonth()+1}/${x.getDate()}`;
+  const t=toWareki(d);
   return soon ? `<span style="color:#E53935;font-weight:bold">${t}</span>` : t;
 }
 
@@ -316,7 +380,7 @@ function renderVehicles() {
   document.getElementById('vCount').textContent = `${filtered.length} 件（${DEPT_LABELS[currentDept]}）`;
   if (filtered.length === 0) {
     document.getElementById('vTable').innerHTML =
-      `<tr><td colspan="7" style="text-align:center;color:#999;padding:24px">
+      `<tr><td colspan="8" style="text-align:center;color:#999;padding:24px">
          ${DEPT_LABELS[currentDept]}の車両はまだ登録されていません
        </td></tr>`;
     return;
@@ -324,6 +388,7 @@ function renderVehicles() {
   document.getElementById('vTable').innerHTML = filtered.map(v => `
     <tr>
       <td><b>${v.number}</b></td>
+      <td class="vplate">${esc(v.full_number||'')}</td>
       <td>${v.car_type||''}</td>
       <td>${v.car_category||''}</td>
       <td class="tight">${fmtInsp(v.inspection_date)}</td>
@@ -336,17 +401,53 @@ function renderVehicles() {
     </tr>`).join('');
 }
 
+// 登録番号を「地域名＋分類番号＋ひらがな＋車番」で組み立てる
+function buildPlate() {
+  const g = id => document.getElementById(id).value.trim();
+  const p = g('vPlateArea') + g('vPlateClass') + g('vPlateKana') + g('vNumber');
+  return p;
+}
+
+function syncPlate() {
+  const p = buildPlate();
+  document.getElementById('vPlateView').textContent = p || '—';
+}
+
+// 既存の登録番号を3つの欄に分解する（例: 京都480わ6401）
+function setPlateParts(full) {
+  const m = (full || '').match(/^(\D+?)(\d{2,3})(\D)(\d{1,4})$/);
+  document.getElementById('vPlateArea').value  = m ? m[1] : '';
+  document.getElementById('vPlateClass').value = m ? m[2] : '';
+  document.getElementById('vPlateKana').value  = m ? m[3] : '';
+  if (!m && full) document.getElementById('vPlateArea').value = full;
+  syncPlate();
+}
+
+// 西暦の日付欄と元号欄を互いに合わせる
+function syncInsp(from) {
+  const dEl = document.getElementById('vInspection');
+  const wEl = document.getElementById('vInspWareki');
+  if (from === 'date') {
+    wEl.value = toWareki(dEl.value);
+  } else {
+    const iso = fromWareki(wEl.value);
+    if (iso) dEl.value = iso;
+  }
+}
+
 function openVehicleModal(id) {
   editVid = id || null;
   const v = id ? vehicles.find(x => x.id === id) : {};
   document.getElementById('vModalTitle').textContent = id ? '車両を編集' : '車両を追加';
   document.getElementById('vDepartment').value = v.department || currentDept;
   document.getElementById('vNumber').value = v.number || '';
+  setPlateParts(v.full_number || '');
   document.getElementById('vCarType').value = v.car_type || '';
   document.getElementById('vRegion').value = v.region || '';
   document.getElementById('vCarCategory').value = v.car_category || '';
   document.getElementById('vInspection').value = v.inspection_date || '';
   document.getElementById('vNotes').value = v.notes || '';
+  document.getElementById('vInspWareki').value = toWareki(v.inspection_date || '');
   document.getElementById('vStudless').checked = !!v.studless;
   document.getElementById('vRentalOther').checked = !!v.is_rental_other;
   document.getElementById('vAlert').className = 'alert';
@@ -360,6 +461,7 @@ async function saveVehicle() {
     region: document.getElementById('vRegion').value.trim(),
     car_category: document.getElementById('vCarCategory').value.trim(),
     inspection_date: document.getElementById('vInspection').value || '',
+    full_number: buildPlate(),
     notes: document.getElementById('vNotes').value.trim(),
     studless: document.getElementById('vStudless').checked,
     is_rental_other: document.getElementById('vRentalOther').checked,

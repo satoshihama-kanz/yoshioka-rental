@@ -189,6 +189,20 @@ thead .cal-vehicle-col { position: sticky; left: 0; top: 0; z-index: 3; backgrou
 
 /* ヘッダーボタン スマホ最適化 */
 .btn-hdr { padding: 5px 9px; font-size: 12px; white-space: nowrap; }
+/* 画面から溢れないようにする（本文の横スクロールは作らない） */
+html, body { max-width: 100%; overflow-x: hidden; }
+header { flex-wrap: wrap; row-gap: 6px; }
+/* flexの既定では中身より狭くならないので、明示的に縮めて折り返させる */
+header > div { min-width: 0; }
+.header-right { flex-wrap: wrap; justify-content: flex-end; row-gap: 5px;
+                min-width: 0; flex: 1 1 auto; }
+.btn-hdr { flex: 0 0 auto; }
+.vehicle-grid { max-width: 100%; }
+.vehicle-grid > .vlist-table,
+.content > .vlist-table { display: table; }
+/* 横に広い表は、その枠の中だけで横スクロールさせる */
+.vehicle-grid, .calendar-container { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+
 @media (max-width: 600px) {
   header { padding: 8px 10px; }
   header h1 { font-size: 12px; }
@@ -200,6 +214,47 @@ thead .cal-vehicle-col { position: sticky; left: 0; top: 0; z-index: 3; backgrou
   .card { padding: 6px 4px; min-width: 58px; text-align: center; border-left-width: 3px; }
   .card-num { font-size: 14px; }
   .card-label { font-size: 9px; }
+  .content { padding: 10px 8px; }
+  .tabs { padding: 0 8px; }
+}
+
+/* iPhone SE など狭い画面 */
+@media (max-width: 380px) {
+  /* 狭い画面ではボタンを折り返さず、その行だけ横に流して見切れを防ぐ */
+  header { padding: 6px 8px; gap: 4px; flex-direction: column; align-items: stretch; }
+  .header-right { flex-wrap: nowrap; justify-content: flex-start; width: 100%;
+                  overflow-x: auto; -webkit-overflow-scrolling: touch; padding-bottom: 2px; }
+  .header-right::-webkit-scrollbar { height: 0; }
+  header h1 { font-size: 11px; }
+  header .subtitle { font-size: 9px; }
+  .header-right { gap: 4px; }
+  .btn-hdr { padding: 3px 5px; font-size: 9px; }
+  .total-badge { font-size: 10px; padding: 2px 6px; }
+  .dept-tab { font-size: 11px; padding: 7px 2px; }
+  .filter-bar { flex-wrap: wrap; row-gap: 4px; padding: 5px 8px; }
+  .filter-bar select, .filter-bar input { font-size: 10px; }
+  .card { min-width: 50px; padding: 5px 3px; }
+  .card-num { font-size: 13px; }
+  .card-label { font-size: 8px; }
+  .content { padding: 8px 6px; }
+  .vlist-table { font-size: 10px; }
+  .vlist-client { max-width: 72px; }
+}
+
+/* 横向き（画面の高さが低いとき）は上部を詰めて一覧を広く使う */
+@media (orientation: landscape) and (max-height: 500px) {
+  header { padding: 4px 10px; }
+  header h1 { font-size: 11px; }
+  header .subtitle { display: none; }
+  .dept-tab { padding: 5px 2px; font-size: 11px; }
+  .tab { padding: 5px 10px; }
+  .filter-bar { padding: 4px 8px; }
+  .summary-cards { margin-bottom: 6px; }
+  .card { padding: 4px 6px; }
+  .content { padding: 6px 8px; }
+  .calendar-container { max-height: calc(100vh - 150px); }
+  .detail-panel { width: 100%; max-width: 420px; }
+  .modal { max-height: 88vh; overflow-y: auto; }
 }
 
 /* 車両一覧テーブル（1行1台） */

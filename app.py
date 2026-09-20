@@ -14,6 +14,8 @@ app = Flask(__name__, static_folder='www')
 app.secret_key        = os.environ.get('SECRET_KEY', 'yoshioka-fleet-secret-2024')
 ADMIN_USER            = os.environ.get('ADMIN_USER', 'yoshioka')
 ADMIN_PASS            = os.environ.get('ADMIN_PASS', 'rental2024')
+# ログインの保持期間。毎日入れ直すのは手間なので1週間持たせる
+app.permanent_session_lifetime = timedelta(days=7)
 # マスタ編集用の合言葉。未設定ならログインパスワードを流用する
 MASTER_PASS           = os.environ.get('MASTER_PASS', '') or ADMIN_PASS
 LINE_CHANNEL_SECRET   = os.environ.get('LINE_CHANNEL_SECRET', '')
@@ -182,7 +184,6 @@ def login():
             session['logged_in'] = True
             session['username']  = u
             session.permanent    = True
-            app.permanent_session_lifetime = timedelta(days=7)
             return redirect('/')
         error = 'ユーザー名またはパスワードが違います'
     return render_template_string(LOGIN_HTML, error=error)
@@ -1884,6 +1885,7 @@ def _build_line_msg(num, car_type, status, staff, client, start_d, end_d, catego
         if staff: lines.append(staff)
     else:
         if client: lines.append(client)
+        if act == '配車' and category: lines.append(_to_hankaku(category))
         if deliver_to: lines.append(f'搬送先 {deliver_to}')
         if mileage: lines.append(f'{mileage}ｷﾛ')
         if act in ('修理', '車検', '点検') and staff:
@@ -2192,6 +2194,17 @@ def _collect_morning(d):
             if nx.get('status') == '予約済':
                 ahead[region].setdefault(match_staff(nx.get('staff', '')), []).append((v, nx))
 
+    # 在庫・整備の一覧は車番順で揃える（探すときに車番から見るため）
+    def num_key(x):
+        n = str(x[0].get('number') or '')
+        return (0, int(n)) if n.isdigit() else (1, 0, n)
+    for k in keys:
+        stock[k].sort(key=num_key)
+        maint[k].sort(key=num_key)
+        for g in (resv[k], ahead[k]):
+            for name in g:
+                g[name].sort(key=num_key)
+
     return {'stock': stock, 'resv': resv, 'ahead': ahead, 'maint': maint,
             'unknown': unknown, 'loc_map': loc_map}
 
@@ -2253,6 +2266,7 @@ def _region_blocks(d, region, data):
     def fmt_resv(v, ev):
         parts = [f"・{v['car_type']}", v['number'], _period_label(ev)]
         if ev.get('client'): parts.append(ev['client'])
+        if ev.get('category'): parts.append(_to_hankaku(ev['category']))
         note = _clean_note(ev)
         return ' '.join(p for p in parts if p), (f'　（{note}）' if note else None)
     if not by_person(data['resv'][region], fmt_resv, '予約済'):
@@ -2265,6 +2279,7 @@ def _region_blocks(d, region, data):
         def fmt_ahead(v, nx):
             parts = [f"・{v['car_type']}", v['number'], _period_label(nx)]
             if nx.get('client'): parts.append(nx['client'])
+            if nx.get('category'): parts.append(_to_hankaku(nx['category']))
             return ' '.join(p for p in parts if p), None
         by_person(data['ahead'][region], fmt_ahead, '予約済')
 
@@ -2776,7 +2791,8 @@ def api_liff_submit():
         if rv:
             state['client'] = state['client'] or (rv['client'] or '')
             state['staff']  = state['staff']  or (rv['staff'] or '')
-        state['category'] = ''
+            # 適用（損保・代車など）はフォームで選べるが、空なら予約の内容を引き継ぐ
+            state['category'] = state['category'] or (rv['category'] or '')
 
     if with_reservation:
         # 返却は在庫として記録し、担当・顧客は後続の予約側に持たせる
@@ -3309,9 +3325,14 @@ def master_vehicles_post():
     # 同じ4桁車番でも分類番号違いの車両が存在しうるため、重複は許容する
     dept = norm_dept(d.get('department'))
     conn = get_db()
-    cur = conn.execute('INSERT INTO vehicles (number, car_type, region, studless, is_rental_other, car_category, department, notes) VALUES (?,?,?,?,?,?,?,?)',
-                       (number, d.get('car_type',''), d.get('region',''), 0, 0,
-                        d.get('car_category',''), dept, d.get('notes','')))
+    cur = conn.execute(
+        '''INSERT INTO vehicles (number, car_type, region, studless, is_rental_other,
+                                 car_category, department, notes, full_number, inspection_date, year)
+           VALUES (?,?,?,?,?,?,?,?,?,?,?)''',
+        (number, d.get('car_type',''), d.get('region',''),
+         1 if d.get('studless') else 0, 1 if d.get('is_rental_other') else 0,
+         d.get('car_category',''), dept, d.get('notes',''),
+         d.get('full_number',''), d.get('inspection_date') or '', d.get('year','')))
     conn.commit()
     row = dict(conn.execute('SELECT * FROM vehicles WHERE id=?', (cur.lastrowid,)).fetchone())
     conn.close()
@@ -3324,10 +3345,14 @@ def master_vehicles_put(vid):
     conn = get_db()
     cur_row = conn.execute('SELECT department FROM vehicles WHERE id=?', (vid,)).fetchone()
     dept = norm_dept(d.get('department'), norm_dept(cur_row['department'] if cur_row else None))
-    conn.execute('UPDATE vehicles SET number=?,car_type=?,region=?,car_category=?,studless=?,is_rental_other=?,department=?,notes=? WHERE id=?',
-                 (d.get('number',''), d.get('car_type',''), d.get('region',''), d.get('car_category',''),
-                  1 if d.get('studless') else 0, 1 if d.get('is_rental_other') else 0, dept,
-                  d.get('notes',''), vid))
+    conn.execute(
+        '''UPDATE vehicles SET number=?,car_type=?,region=?,car_category=?,studless=?,
+                               is_rental_other=?,department=?,notes=?,full_number=?,
+                               inspection_date=?,year=? WHERE id=?''',
+        (d.get('number',''), d.get('car_type',''), d.get('region',''), d.get('car_category',''),
+         1 if d.get('studless') else 0, 1 if d.get('is_rental_other') else 0, dept,
+         d.get('notes',''), d.get('full_number',''), d.get('inspection_date') or '',
+         d.get('year',''), vid))
     conn.commit()
     row = dict(conn.execute('SELECT * FROM vehicles WHERE id=?', (vid,)).fetchone())
     conn.close()
