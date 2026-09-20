@@ -96,7 +96,7 @@ table.tire td{padding:3px 4px}
 /* 狭い画面では備考・最終更新を隠す（内容は行をタップした詳細で見られる） */
 @media(max-width:700px){
   .tablewrap{max-height:none}
-  table.tire .c-note,table.tire .c-upd{display:none}
+  table.tire .c-note,table.tire .c-upd,table.tire .c-info{display:none}
 }
 </style>
 </head>
@@ -154,7 +154,8 @@ table.tire td{padding:3px 4px}
       <button class="btn btn-outline btn-sm" onclick="clearFilters()">ｸﾘｱ</button>
     </div>
     <div class="filter-bar filter-bar2" style="padding:0 6px 5px;gap:5px;border-radius:10px;margin-bottom:6px;border:none;">
-      <input type="text" id="fQ" placeholder="タイヤID・車番・車種で検索" oninput="debouncedList()">
+      <select id="fMaker" onchange="loadList()" style="flex:0 1 auto;"><option value="">ﾒｰｶｰ</option></select>
+      <input type="text" id="fQ" placeholder="タイヤID・車番・車種・ﾒｰｶｰで検索" oninput="debouncedList()">
       <span id="listCount" style="color:#888;"></span>
     </div>
     <div class="bulkbar" id="bulkBar" style="display:none;">
@@ -162,6 +163,8 @@ table.tire td{padding:3px 4px}
       <select id="bulkPlace" style="padding:5px;border:1px solid #cfd8dc;border-radius:6px;font-family:inherit;"></select>
       <select id="bulkShelf" style="padding:5px;border:1px solid #cfd8dc;border-radius:6px;font-family:inherit;"></select>
       <button class="btn btn-primary btn-sm" onclick="bulkApply()">登録する</button>
+      <span style="width:1px;height:18px;background:#ffe082;"></span>
+      <button class="btn btn-outline btn-sm" onclick="openBulkInfo()">📋 タイヤ情報を登録</button>
       <button class="btn btn-outline btn-sm" onclick="clearSel()">選択解除</button>
     </div>
     <div class="tablewrap"><div id="listBody"></div></div>
@@ -244,8 +247,31 @@ table.tire td{padding:3px 4px}
   </div>
 </div>
 
+<!-- タイヤ情報の一括登録 -->
+<div class="modal-overlay" id="infoModal" onclick="if(event.target===this)closeBulkInfo()">
+  <div class="modal" style="width:440px;">
+    <h2>タイヤ情報をまとめて登録</h2>
+    <div style="font-size:12px;color:#607D8B;line-height:1.8;margin-bottom:12px;">
+      選択中の <b id="infoCount">0</b> 件に同じ内容を書き込みます。<br>
+      <b>空欄のままにした項目は変更しません。</b>
+    </div>
+    <div class="fgrid">
+      <label>製造年月日</label><input type="date" id="biMade">
+      <label>メーカー名</label><input type="text" id="biMaker" list="makerList" placeholder="ﾌﾞﾘﾁﾞｽﾄﾝ など">
+      <label>購入元</label><input type="text" id="biSupplier" list="supplierList" placeholder="仕入れ先の名前">
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-outline" onclick="closeBulkInfo()">やめる</button>
+      <button class="btn btn-primary" onclick="bulkInfoApply()">登録する</button>
+    </div>
+  </div>
+</div>
+
+<datalist id="makerList"></datalist>
+<datalist id="supplierList"></datalist>
+
 <script>
-var DEPT = "rental", CFG = null, LIST = [], SEL = {}, TIMER = null;
+var DEPT = "rental", CFG = null, LIST = [], SEL = {}, TIMER = null, SUGGEST = {};
 
 function el(id){ return document.getElementById(id); }
 function esc(s){
@@ -339,12 +365,13 @@ function listURL(extra){
   if(el("fShelf").value)  p.push("shelf=" + encodeURIComponent(el("fShelf").value));
   if(el("fStatus").value) p.push("status=" + encodeURIComponent(el("fStatus").value));
   if(el("fRep").value)    p.push("replace=" + encodeURIComponent(el("fRep").value));
+  if(el("fMaker").value)  p.push("maker=" + encodeURIComponent(el("fMaker").value));
   if(el("fQ").value.trim()) p.push("q=" + encodeURIComponent(el("fQ").value.trim()));
   return "/api/tires?" + p.concat(extra || []).join("&");
 }
 
 function clearFilters(){
-  ["fSeason","fPlace","fShelf","fStatus","fRep"].forEach(function(i){ el(i).value = ""; });
+  ["fSeason","fPlace","fShelf","fStatus","fRep","fMaker"].forEach(function(i){ el(i).value = ""; });
   el("fQ").value = "";
   loadList();
 }
@@ -374,7 +401,8 @@ function table(rows, opts){
   if(opts.check) h += '<th style="width:20px;"><input type="checkbox" onclick="selAll(this)"></th>';
   h += "<th>ﾀｲﾔID</th><th>夏冬</th><th>車番</th><th>車種</th><th>現在地</th><th>状態</th><th>買替</th>";
   if(opts.disposed) h += "<th>廃棄日</th><th>廃棄理由</th>";
-  h += '<th class="c-note">備考</th><th class="c-upd">最終更新</th></tr></thead><tbody>';
+  h += '<th class="c-info">ﾒｰｶｰ</th><th class="c-info">製造年月日</th><th class="c-info">購入元</th>'
+     + '<th class="c-note">備考</th><th class="c-upd">最終更新</th></tr></thead><tbody>';
   rows.forEach(function(t){
     h += '<tr onclick="openTire(\'' + q(t.tire_id) + '\')">';
     if(opts.check) h += '<td onclick="event.stopPropagation()"><input type="checkbox" data-tid="' + q(t.tire_id)
@@ -387,7 +415,11 @@ function table(rows, opts){
       + "<td>" + esc(t.status) + "</td>"
       + "<td>" + repChip(t) + "</td>";
     if(opts.disposed) h += "<td>" + esc(t.disposed_date || "") + "</td><td>" + esc(t.disposed_reason || "") + "</td>";
-    h += '<td class="c-note" style="max-width:110px;overflow:hidden;text-overflow:ellipsis;">' + esc(t.note || "") + "</td>"
+    h += '<td class="c-info">' + esc(t.maker || "") + "</td>"
+      + '<td class="c-info">' + esc(t.made_on || "")
+      + (t.age_label ? ' <span class="tire-sub">(' + esc(t.age_label) + ")</span>" : "") + "</td>"
+      + '<td class="c-info">' + esc(t.supplier || "") + "</td>"
+      + '<td class="c-note" style="max-width:110px;overflow:hidden;text-overflow:ellipsis;">' + esc(t.note || "") + "</td>"
       + '<td class="c-upd tire-sub">' + esc(shortDate(t.updated_at)) + "</td></tr>";
   });
   return h + "</tbody></table>";
@@ -496,6 +528,23 @@ function bulkApply(){
 }
 
 /* ── 詳細 ───────────────────────────────── */
+/* ── メーカー名・購入元の入力候補（表記ゆれ防止） ───────────── */
+function loadSuggest(){
+  return getJSON("/api/tires/suggest").then(function(s){
+    SUGGEST = s;
+    var opts = function(arr){
+      return arr.map(function(v){ return '<option value="' + q(v) + '"></option>'; }).join("");
+    };
+    el("makerList").innerHTML = opts(s.makers || []);
+    el("supplierList").innerHTML = opts(s.suppliers || []);
+    var cur = el("fMaker").value;
+    el("fMaker").innerHTML = '<option value="">ﾒｰｶｰ</option>'
+      + (s.makers || []).map(function(v){
+          return '<option value="' + q(v) + '"' + (v === cur ? " selected" : "") + ">" + esc(v) + "</option>";
+        }).join("");
+  }).catch(function(){});
+}
+
 function openTire(tid){
   getJSON("/api/tires/" + encodeURIComponent(tid)).then(function(d){
     var t = d.tire, c = d.config;
@@ -516,6 +565,16 @@ function openTire(tid){
       + '<label>廃棄日</label><input type="date" id="edDate" value="' + esc(t.disposed_date || "") + '">'
       + '<label>廃棄理由</label><select id="edReason"><option value="">-</option>' + opt(c.dispose_reasons, t.disposed_reason) + "</select>"
       + '<label>備考</label><textarea id="edNote" rows="2">' + esc(t.note || "") + "</textarea>"
+      + '<div style="grid-column:1/-1;margin-top:8px;padding-top:9px;border-top:1px solid #eceff1;'
+      + 'font-size:11px;color:#90a4ae;font-weight:bold;">タイヤ情報</div>'
+      + '<label>製造年月日</label><div style="display:flex;gap:8px;align-items:center;">'
+      + '<input type="date" id="edMade" value="' + esc(t.made_on || "") + '" style="flex:1;">'
+      + '<span id="edAge" style="font-size:11px;color:#90a4ae;white-space:nowrap;">'
+      + esc(t.age_label || "") + "</span></div>"
+      + '<label>メーカー名</label><input type="text" id="edMaker" list="makerList" value="'
+      + esc(t.maker || "") + '" placeholder="ﾌﾞﾘﾁﾞｽﾄﾝ など">'
+      + '<label>購入元</label><input type="text" id="edSupplier" list="supplierList" value="'
+      + esc(t.supplier || "") + '" placeholder="仕入れ先の名前">'
       + "</div>";
     h += '<div class="modal-actions"><button class="btn btn-outline" onclick="closeModal()">閉じる</button>'
       + '<button class="btn btn-primary" onclick="saveTire(\'' + q(t.tire_id) + '\')">保存する</button></div>';
@@ -538,10 +597,40 @@ function saveTire(tid){
   postJSON("/api/tires/" + encodeURIComponent(tid), {
     place: el("edPlace").value, shelf: el("edShelf").value, status: el("edStatus").value,
     replace_flag: el("edRep").value, disposed_date: el("edDate").value,
-    disposed_reason: el("edReason").value, note: el("edNote").value
+    disposed_reason: el("edReason").value, note: el("edNote").value,
+    made_on: el("edMade").value, maker: el("edMaker").value.trim(),
+    supplier: el("edSupplier").value.trim()
   }, "PUT").then(function(res){
     if(!res.ok){ alert(res.j.error || "保存できませんでした"); return; }
     closeModal();
+    loadSuggest();
+    refreshAll();
+  });
+}
+
+/* ── タイヤ情報の一括登録 ─────────────────────── */
+function openBulkInfo(){
+  var n = Object.keys(SEL).length;
+  if(!n){ alert("タイヤを選んでください"); return; }
+  el("infoCount").textContent = n;
+  el("biMade").value = ""; el("biMaker").value = ""; el("biSupplier").value = "";
+  el("infoModal").classList.add("open");
+}
+function closeBulkInfo(){ el("infoModal").classList.remove("open"); }
+function bulkInfoApply(){
+  var ids = Object.keys(SEL);
+  if(!ids.length) return;
+  var body = {tire_ids: ids}, bits = [];
+  if(el("biMade").value){ body.made_on = el("biMade").value; bits.push("製造年月日 " + el("biMade").value); }
+  if(el("biMaker").value.trim()){ body.maker = el("biMaker").value.trim(); bits.push("メーカー " + body.maker); }
+  if(el("biSupplier").value.trim()){ body.supplier = el("biSupplier").value.trim(); bits.push("購入元 " + body.supplier); }
+  if(!bits.length){ alert("登録する項目を入力してください"); return; }
+  if(!confirm(ids.length + "件に「" + bits.join("／") + "」を登録します。よろしいですか？")) return;
+  postJSON("/api/tires/bulk-info", body).then(function(res){
+    if(!res.ok){ alert(res.j.error || "登録できませんでした"); return; }
+    closeBulkInfo();
+    SEL = {};
+    loadSuggest();
     refreshAll();
   });
 }
@@ -598,7 +687,7 @@ function refreshAll(){
   if(p === "shelf") loadShelf();
   if(p === "disposed") loadDisposed();
 }
-loadConfig().then(refreshAll);
+loadConfig().then(function(){ loadSuggest(); refreshAll(); });
 </script>
 </body>
 </html>

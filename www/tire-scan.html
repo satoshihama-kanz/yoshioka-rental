@@ -32,6 +32,7 @@ header .sub{font-size:11px;opacity:.75}
 .big.mount{background:#2E7D32}
 .big.dismount{background:#1565C0}
 .big.status{background:#EF6C00}
+.big.info{background:#455A64}
 .opt{display:block;width:100%;padding:16px;margin-bottom:10px;border:2px solid #cfd8dc;background:#fff;
      border-radius:12px;font-size:18px;font-weight:bold;font-family:inherit;color:#333;cursor:pointer;text-align:left}
 .opt.sel{border-color:#1a3a5c;background:#e8eef5;color:#1a3a5c}
@@ -44,7 +45,7 @@ h3{font-size:14px;color:#555;margin:0 0 10px;font-weight:bold}
 .btn2.go{background:#1a3a5c;color:#fff}
 .btn2.go:disabled{background:#b0bec5}
 .btn2.back{background:#eceff1;color:#455a64}
-select,input[type=date],textarea{width:100%;padding:13px;font-size:16px;font-family:inherit;
+select,input[type=date],input[type=text],textarea{width:100%;padding:13px;font-size:16px;font-family:inherit;
      border:1px solid #cfd8dc;border-radius:10px;background:#fff}
 .msg{padding:12px 14px;border-radius:10px;font-size:14px;line-height:1.6;margin-bottom:12px}
 .msg.err{background:#FFEBEE;color:#C62828;border:1px solid #ffcdd2}
@@ -99,6 +100,15 @@ function load(){
     });
 }
 
+function infoLines(t){
+  var out = "";
+  if(t.maker)   out += "<br>メーカー：" + esc(t.maker);
+  if(t.made_on) out += "<br>製造年月日：" + esc(t.made_on)
+                    + (t.age_label ? '　<span style="color:#90a4ae;font-size:12px;">' + esc(t.age_label) + "</span>" : "");
+  if(t.supplier) out += "<br>購入元：" + esc(t.supplier);
+  return out;
+}
+
 function headCard(){
   var t = DATA.tire, c = DATA.config, statePill;
   if(t.status === "廃棄済み")        statePill = '<span class="pill bad">廃棄済み</span>';
@@ -114,6 +124,7 @@ function headCard(){
     + '<div class="vnum">' + esc(t.full_number || "") + "</div>"
     + '<div class="state">現在：' + statePill + repPill
     + "<br>タイヤ状態：" + esc(t.status)
+    + infoLines(t)
     + (t.updated_at ? '<br><span style="color:#90a4ae;font-size:12px;">最終更新 ' + esc(t.updated_at) + "</span>" : "")
     + "</div></div>";
 }
@@ -170,6 +181,8 @@ function render(){
       }
       h += '<button class="big status" onclick="go(\'status\')">⚠️ 状態変更'
          + "<small>そろそろ交換／要交換／廃棄</small></button>";
+      h += '<button class="big info" onclick="go(\'info\')">📋 タイヤ情報'
+         + "<small>製造年月日・メーカー名・購入元</small></button>";
     }
     if(DATA.pair) h += pairCard(DATA.pair, "対になるタイヤ", false);
   }
@@ -203,6 +216,21 @@ function render(){
        + '<button class="btn2 go" ' + (PICK.place ? "" : "disabled") + ' onclick="submit()">送信する</button></div>';
   }
 
+  else if(STEP === "info"){
+    h += '<div class="card"><h3>製造年月日</h3>'
+       + '<input type="date" id="inMade" value="' + esc(t.made_on || "") + '">'
+       + '<div class="mini" style="text-align:left;margin-top:6px;">タイヤ側面の表示を見て入力してください</div></div>';
+    h += '<div class="card"><h3>メーカー名</h3>'
+       + '<input type="text" id="inMaker" list="makerList" value="' + esc(t.maker || "") + '" placeholder="ﾌﾞﾘﾁﾞｽﾄﾝ など">'
+       + '<datalist id="makerList"></datalist></div>';
+    h += '<div class="card"><h3>購入元</h3>'
+       + '<input type="text" id="inSupplier" list="supplierList" value="' + esc(t.supplier || "") + '" placeholder="仕入れ先の名前">'
+       + '<datalist id="supplierList"></datalist></div>';
+    h += staffCard();
+    h += '<div class="row"><button class="btn2 back" onclick="go(\'menu\')">戻る</button>'
+       + '<button class="btn2 go" onclick="submit()">送信する</button></div>';
+  }
+
   else if(STEP === "status"){
     h += '<div class="card"><h3>タイヤの状態</h3>';
     for(i = 0; i < c.replace_flags.length; i++){
@@ -228,6 +256,22 @@ function render(){
 
   root.innerHTML = h;
   fillStaff();
+  fillSuggest();
+}
+
+function fillSuggest(){
+  if(!el("makerList")) return;
+  fetch("/api/tires/suggest").then(function(r){ return r.json(); }).then(function(s){
+    var fill = function(id, arr){
+      var dl = el(id);
+      if(!dl) return;
+      dl.innerHTML = (arr || []).map(function(v){
+        return '<option value="' + esc(v) + '"></option>';
+      }).join("");
+    };
+    fill("makerList", s.makers);
+    fill("supplierList", s.suppliers);
+  }).catch(function(){});
 }
 
 function todayStr(){
@@ -248,7 +292,12 @@ function submit(){
   var noteBox = el("noteBox");
   var body = { staff: staff, note: noteBox ? noteBox.value : "" };
 
-  if(STEP === "mount"){
+  if(STEP === "info"){
+    body.action = "info";
+    body.made_on = el("inMade").value;
+    body.maker = el("inMaker").value.trim();
+    body.supplier = el("inSupplier").value.trim();
+  }else if(STEP === "mount"){
     body.action = "mount";
   }else if(STEP === "dismount"){
     body.action = "dismount";
@@ -293,7 +342,11 @@ function showDone(j){
   var h = '<div class="card done"><div class="mark">✅</div><h2>登録しました</h2>'
     + '<div style="font-size:17px;font-weight:bold;margin-top:8px;">' + esc(t.tire_id) + "　" + esc(t.season_label) + "タイヤ</div>"
     + '<div style="font-size:15px;color:#555;margin-top:4px;">' + esc(t.car_type || "") + "　" + esc(t.number || "") + "</div>"
-    + '<div style="font-size:16px;margin-top:10px;">→ ' + esc(t.location_label) + "　／　" + esc(t.status) + "</div></div>";
+    + '<div style="font-size:16px;margin-top:10px;">'
+    + (STEP === "info"
+        ? "登録した内容" + (infoLines(t) || "<br>（未入力）")
+        : "→ " + esc(t.location_label) + "　／　" + esc(t.status))
+    + "</div></div>";
   (j.warnings || []).forEach(function(w){
     h += '<div class="msg warn">⚠️ ' + esc(w) + "</div>";
   });

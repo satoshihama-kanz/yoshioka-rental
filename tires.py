@@ -71,10 +71,34 @@ def _config(conn):
 TIRE_SELECT = '''
     SELECT t.tire_id, t.seq, t.vehicle_id, t.season, t.place, t.shelf, t.status,
            t.replace_flag, t.disposed_date, t.disposed_reason, t.note, t.updated_at,
+           t.made_on, t.maker, t.supplier,
            v.number, v.car_type, v.full_number, v.department
       FROM tires t
       LEFT JOIN vehicles v ON v.id = t.vehicle_id
 '''
+
+
+def _age_label(made_on):
+    """製造年月日から「製造4年2か月」のような経過表示を作る。不正な値は空を返す"""
+    s = (made_on or '').strip()
+    if not s:
+        return ''
+    try:
+        d = datetime.strptime(s[:10], '%Y-%m-%d').date()
+    except ValueError:
+        return ''
+    today = datetime.now(JST).date()
+    months = (today.year - d.year) * 12 + (today.month - d.month)
+    if today.day < d.day:
+        months -= 1
+    if months < 0:
+        return ''
+    y, m = divmod(months, 12)
+    if y and m:
+        return '製造%d年%dか月' % (y, m)
+    if y:
+        return '製造%d年' % y
+    return '製造%dか月' % m
 
 
 def _row(r):
@@ -82,6 +106,7 @@ def _row(r):
     d['season_label'] = SEASON_LABEL.get(d.get('season'), '')
     d['mounted'] = (d.get('place') == PLACE_ON)
     d['disposed'] = (d.get('status') == '廃棄済み')
+    d['age_label'] = _age_label(d.get('made_on'))
     # 保管場所の表示用（拠点＋棚）
     if d['mounted']:
         d['location_label'] = PLACE_ON
@@ -92,6 +117,29 @@ def _row(r):
     else:
         d['location_label'] = '未設定'
     return d
+
+
+def _clean_made_on(v):
+    """製造年月日を YYYY-MM-DD に正規化する。空は空のまま。不正なら None を返す"""
+    s = (v or '').strip()
+    if not s:
+        return ''
+    try:
+        return datetime.strptime(s[:10], '%Y-%m-%d').date().strftime('%Y-%m-%d')
+    except ValueError:
+        return None
+
+
+def _info_summary(made_on, maker, supplier):
+    """作業履歴の備考に残す、タイヤ情報の要約"""
+    bits = []
+    if maker:
+        bits.append('メーカー ' + maker)
+    if made_on:
+        bits.append('製造 ' + made_on)
+    if supplier:
+        bits.append('購入元 ' + supplier)
+    return '／'.join(bits) if bits else '（未入力に変更）'
 
 
 def _fetch(conn, tire_id):
@@ -134,7 +182,10 @@ def init_tire_schema():
             disposed_date   TEXT DEFAULT '',
             disposed_reason TEXT DEFAULT '',
             note            TEXT DEFAULT '',
-            updated_at      TEXT DEFAULT ''
+            updated_at      TEXT DEFAULT '',
+            made_on         TEXT DEFAULT '',
+            maker           TEXT DEFAULT '',
+            supplier        TEXT DEFAULT ''
         );
         CREATE TABLE IF NOT EXISTS tire_events (
             id              INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -154,6 +205,19 @@ def init_tire_schema():
         CREATE INDEX IF NOT EXISTS idx_tires_place      ON tires(place);
         CREATE INDEX IF NOT EXISTS idx_tire_events_tid  ON tire_events(tire_id);
     ''')
+    conn.commit()
+
+    # 既にタイヤが登録済みのDBへのカラム追加（存在する場合は無視される）
+    for sql in [
+        # タイヤそのものの情報。現場・管理側のどちらからでも登録できる
+        "ALTER TABLE tires ADD COLUMN made_on  TEXT DEFAULT ''",   # 製造年月日
+        "ALTER TABLE tires ADD COLUMN maker    TEXT DEFAULT ''",   # メーカー名
+        "ALTER TABLE tires ADD COLUMN supplier TEXT DEFAULT ''",   # 購入元
+    ]:
+        try:
+            conn.execute(sql)
+        except Exception:
+            pass
     conn.commit()
     conn.close()
 
@@ -257,6 +321,12 @@ def api_tires_list():
     if a.get('shelf'):
         where.append('t.shelf=?')
         params.append(a['shelf'])
+    if a.get('maker'):
+        where.append('t.maker=?')
+        params.append(a['maker'])
+    if a.get('supplier'):
+        where.append('t.supplier=?')
+        params.append(a['supplier'])
     place = a.get('place')
     if place == '__unset__':
         where.append("(t.place='' OR t.place IS NULL)")
@@ -268,9 +338,9 @@ def api_tires_list():
     q = (a.get('q') or '').strip()
     if q:
         where.append('(t.tire_id LIKE ? OR v.number LIKE ? OR v.car_type LIKE ? '
-                     'OR v.full_number LIKE ?)')
+                     'OR v.full_number LIKE ? OR t.maker LIKE ? OR t.supplier LIKE ?)')
         like = '%' + q + '%'
-        params += [like, like, like, like]
+        params += [like] * 6
 
     sql = TIRE_SELECT + (' WHERE ' + ' AND '.join(where) if where else '')
     sql += ' ORDER BY t.seq, t.season DESC'
@@ -453,6 +523,25 @@ def api_tire_action(tire_id):
                          "WHERE tire_id=?", (rep, status, _now(), tire_id))
             _log(conn, tire_id, t['vehicle_id'], '状態変更',
                  status=status, replace_flag=rep, staff=staff, note=note)
+
+    elif action == 'info':
+        # 製造年月日・メーカー名・購入元。送られてきた項目だけを書き換える
+        made_on = _clean_made_on(d.get('made_on', t['made_on']))
+        if made_on is None:
+            conn.close()
+            return jsonify({'error': '製造年月日の形式が不正です'}), 400
+        maker = (d.get('maker', t['maker']) or '').strip()
+        supplier = (d.get('supplier', t['supplier']) or '').strip()
+        if made_on == (t['made_on'] or '') and maker == (t['maker'] or '') \
+                and supplier == (t['supplier'] or ''):
+            conn.close()
+            return jsonify({'error': '変更する内容がありません'}), 400
+        conn.execute("UPDATE tires SET made_on=?, maker=?, supplier=?, updated_at=? "
+                     "WHERE tire_id=?", (made_on, maker, supplier, _now(), tire_id))
+        summary = _info_summary(made_on, maker, supplier)
+        _log(conn, tire_id, t['vehicle_id'], 'タイヤ情報登録',
+             staff=staff, note=(note + '　' if note else '') + summary)
+
     else:
         conn.close()
         return jsonify({'error': '作業内容が不正です'}), 400
@@ -501,9 +590,17 @@ def api_tire_update(tire_id):
     else:
         ddate, dreason = '', ''
     note = d.get('note', t['note']) or ''
+    made_on = _clean_made_on(d.get('made_on', t['made_on']))
+    if made_on is None:
+        conn.close()
+        return jsonify({'error': '製造年月日の形式が不正です'}), 400
+    maker = (d.get('maker', t['maker']) or '').strip()
+    supplier = (d.get('supplier', t['supplier']) or '').strip()
     conn.execute("UPDATE tires SET place=?, shelf=?, status=?, replace_flag=?, "
-                 "disposed_date=?, disposed_reason=?, note=?, updated_at=? WHERE tire_id=?",
-                 (place, shelf, status, rep, ddate, dreason, note, _now(), tire_id))
+                 "disposed_date=?, disposed_reason=?, note=?, made_on=?, maker=?, "
+                 "supplier=?, updated_at=? WHERE tire_id=?",
+                 (place, shelf, status, rep, ddate, dreason, note,
+                  made_on, maker, supplier, _now(), tire_id))
     _log(conn, tire_id, t['vehicle_id'], '管理側修正',
          place=place, shelf=shelf, status=status, replace_flag=rep,
          disposed_reason=dreason, staff=(d.get('staff') or '管理'), note=note)
@@ -544,6 +641,62 @@ def api_tires_bulk_location():
     conn.commit()
     conn.close()
     return jsonify({'ok': True, 'updated': n})
+
+
+# ── タイヤ情報（製造年月日・メーカー名・購入元）の一括登録 ──────────
+@bp.route('/api/tires/bulk-info', methods=['POST'])
+def api_tires_bulk_info():
+    """同じ銘柄・同じ仕入れでまとめて買ったタイヤに、一度に書き込む。
+    送られてきた項目だけを書き換えるので、メーカーだけを直すこともできる。"""
+    d = request.get_json() or {}
+    ids = d.get('tire_ids') or []
+    if not ids:
+        return jsonify({'error': 'タイヤが選択されていません'}), 400
+
+    sets, params = [], []
+    if 'made_on' in d:
+        made_on = _clean_made_on(d.get('made_on'))
+        if made_on is None:
+            return jsonify({'error': '製造年月日の形式が不正です'}), 400
+        sets.append('made_on=?')
+        params.append(made_on)
+    if 'maker' in d:
+        sets.append('maker=?')
+        params.append((d.get('maker') or '').strip())
+    if 'supplier' in d:
+        sets.append('supplier=?')
+        params.append((d.get('supplier') or '').strip())
+    if not sets:
+        return jsonify({'error': '登録する項目がありません'}), 400
+
+    conn = _get_db()
+    n = 0
+    for tid in ids:
+        t = _fetch(conn, tid)
+        if not t:
+            continue
+        conn.execute("UPDATE tires SET " + ', '.join(sets) + ", updated_at=? WHERE tire_id=?",
+                     params + [_now(), tid])
+        t2 = _fetch(conn, tid)
+        _log(conn, tid, t['vehicle_id'], 'タイヤ情報一括登録', staff='管理',
+             note=_info_summary(t2['made_on'], t2['maker'], t2['supplier']))
+        n += 1
+    conn.commit()
+    conn.close()
+    return jsonify({'ok': True, 'updated': n})
+
+
+# ── メーカー名・購入元の入力候補 ────────────────────────────
+@bp.route('/api/tires/suggest', methods=['GET'])
+def api_tires_suggest():
+    """すでに登録された値を候補に出して、表記ゆれを防ぐ"""
+    conn = _get_db()
+    def vals(col):
+        return [r[0] for r in conn.execute(
+            "SELECT DISTINCT %s FROM tires WHERE %s<>'' ORDER BY %s" % (col, col, col)).fetchall()]
+    out = {'makers': vals('maker'), 'suppliers': vals('supplier')}
+    conn.close()
+    return jsonify(out)
 
 
 # ── ラベル印刷用データ ──────────────────────────────────────
@@ -597,7 +750,8 @@ def init_tires(app, get_db, login_required, today_fn):
     _today = today_fn
 
     # 管理側のAPI・画面はログイン必須にする（現場用の2本だけ認証なし）
-    open_endpoints = {'tires.tire_scan_page', 'tires.api_tire_get', 'tires.api_tire_action'}
+    open_endpoints = {'tires.tire_scan_page', 'tires.api_tire_get', 'tires.api_tire_action',
+                      'tires.api_tires_suggest'}
 
     @bp.before_request
     def _guard():
