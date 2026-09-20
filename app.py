@@ -1200,9 +1200,9 @@ def register_event(v, status, state):
     # 新しいイベントの開始日以降は新しいイベントが有効になるため、前のイベントを締める
     if status == '在庫':
         # 返却・キャンセル: 現在アクティブなイベントをすべてクローズ
-        c.execute('''UPDATE events SET end_date=?
+        c.execute('''UPDATE events SET end_date=MAX(COALESCE(start_date, ?), ?)
                      WHERE vehicle_id=? AND (end_date IS NULL OR end_date >= ?)''',
-                  (start_d, v['id'], start_d))
+                  (start_d, start_d, v['id'], start_d))
     else:
         # 貸出・予約等: 終了日のない既存イベントを新しい開始日の前日でクローズ
         prev_end = (datetime.strptime(start_d, '%Y-%m-%d') - timedelta(days=1)).strftime('%Y-%m-%d')
@@ -2041,9 +2041,9 @@ def branch_region(loc):
 def current_locations(date=None, dept=DEFAULT_DEPT):
     """各車両の「今どこにあるか」を返す {vehicle_id: 所在地}。
 
-    車両マスタの初期登録地は使わない。返却などで入力された所在地のうち、
-    対象日までで最も新しいものを採用する（予約や配車は所在地を持たないため、
-    その前に入力された場所がそのまま引き継がれる）。
+    車両マスタの初期登録地は使わない。所在地は入力した人が
+    「いまここにある」と申告した値なので、いちばん最後に入力されたものを採る。
+    対象日より後に入力された分は使わない（過去日のプレビューを狂わせないため）。
     """
     d = date or today_jst()
     conn = get_db()
@@ -2051,8 +2051,8 @@ def current_locations(date=None, dept=DEFAULT_DEPT):
         """SELECT e.vehicle_id, e.location FROM events e
            JOIN vehicles v ON e.vehicle_id = v.id
            WHERE v.department = ? AND COALESCE(e.location,'') <> ''
-             AND COALESCE(e.start_date,'') <= ?
-           ORDER BY e.start_date DESC, e.created_at DESC, e.id DESC""",
+             AND substr(COALESCE(e.created_at,''), 1, 10) <= ?
+           ORDER BY e.created_at DESC, e.id DESC""",
         (dept, d)).fetchall()
     conn.close()
     out = {}
