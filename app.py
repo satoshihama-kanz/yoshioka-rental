@@ -2251,7 +2251,7 @@ def _region_blocks(d, region, data):
     section(f'{flag}在庫 {len(items)}台')
     if items:
         for v, ev, nexts in items:
-            line = f"・{v['car_type']} {v['number']}{_stock_marks(v, ev)}".rstrip()
+            line = f"・{v['number']} {v['car_type']}{_stock_marks(v, ev)}".rstrip()
             line += _place_label(loc_map.get(v['id']))
             nxt = next(iter(nexts), None)
             if nxt:
@@ -2264,7 +2264,7 @@ def _region_blocks(d, region, data):
     blank()
     section(f'{flag}予約')
     def fmt_resv(v, ev):
-        parts = [f"・{v['car_type']}", v['number'], _period_label(ev)]
+        parts = [f"・{v['number']}", v['car_type'], _period_label(ev)]
         if ev.get('client'): parts.append(ev['client'])
         if ev.get('category'): parts.append(_to_hankaku(ev['category']))
         note = _clean_note(ev)
@@ -2277,7 +2277,7 @@ def _region_blocks(d, region, data):
         blank()
         section(f'▼この先の予約（{_UPCOMING_DAYS}日以内）')
         def fmt_ahead(v, nx):
-            parts = [f"・{v['car_type']}", v['number'], _period_label(nx)]
+            parts = [f"・{v['number']}", v['car_type'], _period_label(nx)]
             if nx.get('client'): parts.append(nx['client'])
             if nx.get('category'): parts.append(_to_hankaku(nx['category']))
             return ' '.join(p for p in parts if p), None
@@ -2290,7 +2290,7 @@ def _region_blocks(d, region, data):
         blank()
         section(f'▼{label}')
         for v, ev, status in group:
-            item(f"・{v['car_type']} {v['number']}{_place_label(loc_map.get(v['id']))}",
+            item(f"・{v['number']} {v['car_type']}{_place_label(loc_map.get(v['id']))}",
                  v, ev, status)
 
     return blocks
