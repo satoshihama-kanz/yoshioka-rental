@@ -2067,7 +2067,8 @@ def vehicle_region(v, loc_map):
 def _place_label(loc):
     """支店名そのものではない所在地（自社工場など）を朝一ラインに添える"""
     loc = (loc or '').strip()
-    if not loc or loc in ('京都本社', '滋賀支店'):
+    # 支店そのものを指す言い方は、見出しで分かるので添えない
+    if not loc or loc in ('京都本社', '滋賀支店', '京都', '滋賀', '本社', '支店'):
         return ''
     return f'（{loc}）'
 
