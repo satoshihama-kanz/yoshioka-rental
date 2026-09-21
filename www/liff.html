@@ -143,6 +143,9 @@ body.dept-sales .action-btn.selected{border-color:#4a3410;background:#4a3410}
       <button class="action-btn" onclick="selectAction('返却')" id="btn-返却">
         <span class="icon">✅</span>返却
       </button>
+      <button class="action-btn" onclick="selectAction('修理完了')" id="btn-修理完了" style="grid-column:1/-1;background:#EEF4FC;border-color:#5C8FD6;">
+        <span class="icon">🔧✅</span>修理完了（工場から戻った）
+      </button>
       <button class="action-btn" onclick="selectAction('返却予約')" id="btn-返却予約" style="grid-column:1/-1;background:#F1F8F4;border-color:#4CAF50;">
         <span class="icon">✅➕📅</span>返却＋そのまま予約
       </button>
@@ -593,6 +596,9 @@ function updateSections() {
   // 返却＋予約は「返却の記録」と「次の予約」を1回で登録する
   const isReturnResv = a === '返却予約';
   const isReturnOnly = a === '返却';
+  // 修理完了は「工場から戻ってきた」入力。記録は返却と同じ在庫化なので、画面も返却に合わせる
+  const isRepairDone = a === '修理完了';
+  const isBack = isReturnOnly || isRepairDone;
   document.getElementById('resvSection').classList.toggle('hide', !isReturnResv);
   document.getElementById('dateLabel').textContent = (isReturnOnly || isReturnResv) ? '返却日' : '開始日';
   // キャンセル選択肢
@@ -613,13 +619,13 @@ function updateSections() {
   document.getElementById('dateSection').classList.toggle('hide', isCancel && !isChange);
   // 終了日
   document.getElementById('endDateWrap').classList.toggle('hide',
-    isReturnOnly || isReturnResv || (isCancel && !isChange));
+    isBack || isReturnResv || (isCancel && !isChange));
   // 顧客名（返却＋予約では予約側、予約変更では配車先の変更に使う）
   document.getElementById('clientSection').classList.toggle('hide',
-    a === '修理' || isReturnOnly || (isCancel && !isChange));
+    a === '修理' || isBack || (isCancel && !isChange));
   // 適用（損保など）は予約で決まる。配車では入力させない
   document.getElementById('categorySection').classList.toggle('hide',
-    a === '修理' || isReturnOnly || (isCancel && !isChange));
+    a === '修理' || isBack || (isCancel && !isChange));
   // 担当
   document.getElementById('staffSection').classList.toggle('hide', isCancel && !isChange);
   // 距離
@@ -628,6 +634,7 @@ function updateSections() {
   // 予約変更では開始日を空にできる（日程未定のまま置ける）
   document.getElementById('dateLabel').textContent =
     isChange ? '予約開始日（未定なら空欄）' :
+    isRepairDone ? '修理完了日' :
     ((isReturnOnly || isReturnResv) ? '返却日' : '開始日');
 }
 

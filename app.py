@@ -1242,7 +1242,8 @@ def register_event(v, status, state):
     msg = _build_line_msg(
         v['number'], v.get('car_type', ''), status, staff, client or prev_client,
         start_d, end_d, category, tentative=state.get('tentative'),
-        mileage=mileage, remarks=remarks, deliver_to=deliver_to
+        mileage=mileage, remarks=remarks, deliver_to=deliver_to,
+        act_label=state.get('act_label') or ''
     )
     if consumed_n:
         msg += f'\n（予約{consumed_n}件を配車に切り替えました）'
@@ -1866,7 +1867,7 @@ def _resv_tail(staff, client, start_d, category, tentative=False):
     return head + ('\n' + body if body else '')
 
 def _build_line_msg(num, car_type, status, staff, client, start_d, end_d, category,
-                    tentative=False, mileage='', remarks='', deliver_to=''):
+                    tentative=False, mileage='', remarks='', deliver_to='', act_label=''):
     """グループLINEに流す共有メッセージ。
 
       310 ｾﾚﾅ　予約          310 ｾﾚﾅ　配車
@@ -1874,7 +1875,8 @@ def _build_line_msg(num, car_type, status, staff, client, start_d, end_d, catego
       損保                   32100ｷﾛ
       奥谷慎太郎
     """
-    act = _ACT_LABEL.get(status, status)
+    # 同じ在庫化でも「引取」と「修理完了」は伝わり方が違うので、呼び名を差し替えられるようにする
+    act = act_label or _ACT_LABEL.get(status, status)
     lines = [f'{num} {car_type}　{act}'.rstrip()]
 
     if act in ('予約', '予約変更', '予約取消'):
@@ -1888,7 +1890,7 @@ def _build_line_msg(num, car_type, status, staff, client, start_d, end_d, catego
         if act == '配車' and category: lines.append(_to_hankaku(category))
         if deliver_to: lines.append(f'搬送先 {deliver_to}')
         if mileage: lines.append(f'{mileage}ｷﾛ')
-        if act in ('修理', '車検', '点検') and staff:
+        if act in ('修理', '車検', '点検', '修理完了') and staff:
             lines.append(staff)
     if remarks:
         lines.append(remarks)
@@ -1990,7 +1992,7 @@ MORNING_STAFF = MORNING_STAFF_KYOTO + MORNING_STAFF_SHIGA
 _STAFF_REGION = ({s: '京都' for s in MORNING_STAFF_KYOTO} |
                  {s: '滋賀' for s in MORNING_STAFF_SHIGA})
 
-# 終了日なしの非在庫イベントをいつまで有効とみなすか
+# 終了日なしの予約・整備をいつまで有効とみなすか（貸出中は対象外）
 _STALE_DAYS = 60
 
 def match_staff(ev_staff):
@@ -2073,6 +2075,15 @@ def vehicle_region(v, loc_map):
     """朝一ラインの振り分け先。所在地が分からない車は「所在地未入力」。"""
     return branch_region(loc_map.get(v['id'])) or NO_REGION
 
+def lend_region(v, loc_map):
+    """配車済み（貸出中）の車の振り分け先。
+
+    出払っている車はお客さんのところにあるので所在地が入らない。
+    所在地が無いときは車両マスタの所属支店で振り分ける。
+    """
+    return (branch_region(loc_map.get(v['id']))
+            or branch_region(v.get('region')) or NO_REGION)
+
 def _place_label(loc):
     """支店名そのものではない所在地（自社工場など）を朝一ラインに添える"""
     loc = (loc or '').strip()
@@ -2141,8 +2152,11 @@ def resolve_vehicle_states(date=None, dept=DEFAULT_DEPT):
     latest = {}
     for r in rows:
         r = dict(r)
-        # 終了日なしのまま放置された古い貸出/予約は無視する
-        if (not r.get('end_date')) and r.get('status') != '在庫' \
+        # 終了日なしのまま放置された古い予約・整備は無視する。
+        # 貸出中はこの対象にしない。長く出たままの車を日数だけで在庫に戻すと、
+        # 空いていない車を朝一ラインで「在庫」と案内してしまうため、
+        # 返却（または修理完了）を入れるまでその状態のままにする。
+        if (not r.get('end_date')) and r.get('status') not in ('在庫', '貸出中') \
            and (r.get('start_date') or '') < stale_before:
             continue
         latest.setdefault(r['vehicle_id'], r)
@@ -2182,6 +2196,7 @@ def _collect_morning(d):
     resv  = {k: {} for k in keys}
     ahead = {k: {} for k in keys}
     maint = {k: [] for k in keys}
+    lend  = {k: [] for k in keys}      # 配車済み（貸出中）
     unknown = []
     for st in states:
         v, ev, status = st['vehicle'], st['event'], st['status']
@@ -2197,6 +2212,9 @@ def _collect_morning(d):
                 stock[region].append((v, ev, nexts))
         elif status == '予約済':
             resv[region].setdefault(match_staff((ev or {}).get('staff', '')), []).append((v, ev))
+        elif status == '貸出中':
+            # 配車済みは台数だけ出す。明細は台数が多すぎて一斉ラインに載せられない
+            lend[lend_region(v, loc_map)].append((v, ev))
         elif status in ('修理中', '点検中', '車検中'):
             maint[region].append((v, ev, status))
 
@@ -2211,12 +2229,13 @@ def _collect_morning(d):
     for k in keys:
         stock[k].sort(key=num_key)
         maint[k].sort(key=num_key)
+        lend[k].sort(key=num_key)
         for g in (resv[k], ahead[k]):
             for name in g:
                 g[name].sort(key=num_key)
 
     return {'stock': stock, 'resv': resv, 'ahead': ahead, 'maint': maint,
-            'unknown': unknown, 'loc_map': loc_map}
+            'lend': lend, 'unknown': unknown, 'loc_map': loc_map}
 
 def _region_blocks(d, region, data):
     """1支店ぶんの朝一ライン（構造化ブロック）"""
@@ -2258,7 +2277,9 @@ def _region_blocks(d, region, data):
 
     # 在庫（先の予約が入っていない車だけ）
     items = data['stock'][region]
-    section(f'{flag}在庫 {len(items)}台')
+    lends = data['lend'][region]
+    # 配車済みは台数だけ添える。入力した配車がここの数に入る
+    section(f'{flag}在庫 {len(items)}台' + (f'（配車中 {len(lends)}台）' if lends else ''))
     if items:
         for v, ev, nexts in items:
             line = f"・{v['number']} {v['car_type']}{_stock_marks(v, ev)}".rstrip()
@@ -2731,6 +2752,8 @@ def api_liff_submit():
     action_map = {
         '配車':'貸出中','予約':'予約済','修理':'修理中',
         '返却':'在庫','車検':'車検中','点検':'点検中',
+        # 修理・点検・車検から戻ってきたとき。記録は返却と同じ在庫化
+        '修理完了':'在庫',
         # 返却と同時に次の予約を押さえる（1回の送信で2件登録する）
         '返却予約':'在庫',
         # 既存予約の書き換え（配車先の変更・日程の確定）
@@ -2786,6 +2809,8 @@ def api_liff_submit():
         'washed':          d.get('washed', False),
         'interior_cleaned':d.get('interior_cleaned', False),
         'deliver_to':      d.get('deliver_to', ''),
+        # 修理完了は在庫として記録するが、グループLINEには「修理完了」と出す
+        'act_label':       '修理完了' if action == '修理完了' else '',
     }
     if status == '貸出中':
         # 配車は予約からの流れ。フォームで空でも、いま入っている予約の
@@ -2858,8 +2883,9 @@ def api_liff_submit():
             resv['staff'], resv['client'], resv['start_date'],
             resv['category'], resv_tentative)
 
-    # 他社借りの車は返却したら履歴ごと消す（マスタに残さない運用）
-    if status == '在庫' and not with_reservation and v.get('is_rental_other'):
+    # 他社借りの車は返却したら履歴ごと消す（マスタに残さない運用）。
+    # 修理完了は借りた車を返したわけではないので消さない
+    if action == '返却' and not with_reservation and v.get('is_rental_other'):
         conn3 = get_db()
         conn3.execute('DELETE FROM events WHERE vehicle_id=?', (v['id'],))
         conn3.execute('DELETE FROM vehicles WHERE id=?', (v['id'],))

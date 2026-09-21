@@ -159,7 +159,7 @@ function fmtDateFull(d) {
 }
 
 // 指定日における車両の状態を返す
-// 終了日なしの非在庫イベントをいつまで有効とみなすか（サーバ側 _STALE_DAYS と一致させる）
+// 終了日なしの予約・整備をいつまで有効とみなすか（サーバ側 _STALE_DAYS と一致させる）
 const STALE_DAYS = 60;
 
 function getVehicleStatusOnDate(vehicleId, dateStr) {
@@ -175,8 +175,9 @@ function getVehicleStatusOnDate(vehicleId, dateStr) {
         const s   = e.start_date || '0000-00-00';
         const end = e.end_date || '9999-12-31';
         if (dateStr < s || dateStr > end) return false;
-        // 終了日のないまま放置された古い貸出・予約は無視する
-        if (!e.end_date && e.status !== '在庫' && s < staleBefore) return false;
+        // 終了日のないまま放置された古い予約・整備は無視する。
+        // 貸出中は対象外（返却を入れるまで貸出中のまま。サーバ側と同じ規則）
+        if (!e.end_date && e.status !== '在庫' && e.status !== '貸出中' && s < staleBefore) return false;
         return true;
     }).sort((a, b) =>
         (b.created_at || '').localeCompare(a.created_at || '') || (b.id - a.id));
